@@ -111,6 +111,7 @@ temp/
 # Secrets and credentials
 secrets/
 credentials/
+data-pipeline/config/
 *.pem
 *.key
 *.crt
@@ -119,3 +120,4 @@ credentials/
 *.pyc
 *.pyo
 *.pyd
+.env
