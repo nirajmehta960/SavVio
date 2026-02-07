@@ -12,8 +12,10 @@ import pandas as pd
 import sys
 from pathlib import Path
 
-# Add parent directory to path to import from ingest module
-sys.path.insert(0, str(Path(__file__).parent.parent))
+# Add current directory to path so imports work when running directly
+current_dir = Path(__file__).resolve().parent
+if str(current_dir) not in sys.path:
+    sys.path.insert(0, str(current_dir))
 
 from config import (
     ENVIRONMENT,
@@ -56,7 +58,7 @@ def load_from_gcs() -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     logger.info("=" * 80)
     
     # Import GCS loader
-    from ingest.gcs_loader import load_financial_data, load_product_data, load_review_data
+    from ingestion.gcs_loader import load_financial_data, load_product_data, load_review_data
     
     try:
         # Load financial data (CSV)
@@ -112,7 +114,7 @@ def load_from_api() -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     logger.info("=" * 80)
     
     # Import API loader
-    from ingest.api_loader import load_financial_data, load_product_data, load_review_data
+    from ingestion.api_loader import load_financial_data, load_product_data, load_review_data
     
     try:
         # Load financial data
