@@ -51,19 +51,32 @@ class GCSLoader:
             logger.error(f"Failed to initialize GCS client: {e}")
             raise
     
+    @staticmethod
+    def _calculate_md5(file_path: str) -> str:
+        """Calculate the MD5 checksum of a local file."""
+        import hashlib
+        import base64
+        hash_md5 = hashlib.md5()
+        with open(file_path, "rb") as f:
+            for chunk in iter(lambda: f.read(4096), b""):
+                hash_md5.update(chunk)
+        return base64.b64encode(hash_md5.digest()).decode('utf-8')
+
     def download_blob(
         self, 
         bucket_name: str, 
         blob_name: str, 
-        destination_path: str
+        destination_path: str,
+        check_md5: bool = True
     ) -> str:
         """
-        Download a single blob from GCS bucket.
+        Download a single blob from GCS bucket with optional MD5 check.
         
         Args:
             bucket_name: Name of the GCS bucket
             blob_name: Path to the file in the bucket (e.g., 'raw/financial.csv')
             destination_path: Local path where file should be saved
+            check_md5: If True, skip download if local file exists and matches remote MD5
             
         Returns:
             str: Path to the downloaded file
@@ -80,11 +93,25 @@ class GCSLoader:
             bucket = self.client.bucket(bucket_name)
             blob = bucket.blob(blob_name)
             
-            # Check if blob exists
+            # Check if blob exists (this fetches metadata including MD5)
             if not blob.exists():
                 raise FileNotFoundError(
                     f"Blob '{blob_name}' not found in bucket '{bucket_name}'"
                 )
+            
+            # Reload metadata to ensure we have the latest MD5
+            blob.reload()
+            
+            # Smart Download Check
+            if check_md5 and os.path.exists(destination_path):
+                remote_md5 = blob.md5_hash
+                local_md5 = self._calculate_md5(destination_path)
+                
+                if remote_md5 == local_md5:
+                    logger.info(f"✓ Skipped download: {destination_path} (Up to date)")
+                    return destination_path
+                else:
+                    logger.info(f"⚡ File changed. Downloading update for {destination_path}")
             
             # Download the blob
             logger.info(f"Downloading gs://{bucket_name}/{blob_name} to {destination_path}")
