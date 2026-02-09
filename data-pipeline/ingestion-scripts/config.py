@@ -41,16 +41,33 @@ GCS_VALIDATED_PATH = os.getenv("GCS_VALIDATED_PATH", "validated/")
 
 # Specific blob paths for each dataset
 FINANCIAL_BLOB = os.getenv("FINANCIAL_BLOB", "raw/financial_data.csv")
-PRODUCT_BLOB = os.getenv("PRODUCT_BLOB", "raw/product_data.json")
-REVIEW_BLOB = os.getenv("REVIEW_BLOB", "raw/review_data.json")
+PRODUCT_BLOB = os.getenv("PRODUCT_BLOB", "raw/product_data.jsonl")
+REVIEW_BLOB = os.getenv("REVIEW_BLOB", "raw/review_data.jsonl")
+
 
 
 # ============================================================================
 # Local File Paths
 # ============================================================================
 
+
+# Define Project Root (data-pipeline directory)
+# config.py is in data-pipeline/ingestion-scripts/
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+REPO_ROOT = PROJECT_ROOT.parent
+
 # Base directory for data storage
-DATA_DIR = Path(os.getenv("DATA_DIR", "data"))
+_data_dir_env = os.getenv("DATA_DIR")
+if _data_dir_env:
+    _path = Path(_data_dir_env)
+    if _path.is_absolute():
+        DATA_DIR = _path
+    else:
+        # Assume relative paths in .env are relative to repository root
+        DATA_DIR = REPO_ROOT / _path
+else:
+    # Default to data-pipeline/data
+    DATA_DIR = PROJECT_ROOT / "data"
 
 # Subdirectories
 RAW_DATA_DIR = DATA_DIR / "raw"
@@ -66,8 +83,8 @@ for directory in [RAW_DATA_DIR, PROCESSED_DATA_DIR, VALIDATED_DATA_DIR,
 
 # Specific file paths
 FINANCIAL_RAW_PATH = str(RAW_DATA_DIR / "financial_data.csv")
-PRODUCT_RAW_PATH = str(RAW_DATA_DIR / "product_data.json")
-REVIEW_RAW_PATH = str(RAW_DATA_DIR / "review_data.json")
+PRODUCT_RAW_PATH = str(RAW_DATA_DIR / "product_data.jsonl")
+REVIEW_RAW_PATH = str(RAW_DATA_DIR / "review_data.jsonl")
 
 
 # ============================================================================
@@ -116,8 +133,22 @@ MONTHLY_EXPENSE_COLS = os.getenv("MONTHLY_EXPENSE_COLS", "rent,bills,subscriptio
 # Logging Configuration
 # ============================================================================
 
+
+
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
-LOG_DIR = Path(os.getenv("LOG_DIR", "logs"))
+
+_log_dir_env = os.getenv("LOG_DIR")
+if _log_dir_env:
+    _path = Path(_log_dir_env)
+    if _path.is_absolute():
+        LOG_DIR = _path
+    else:
+        # Assume relative paths in .env are relative to repository root
+        LOG_DIR = REPO_ROOT / _path
+else:
+    # Default to data-pipeline/logs
+    LOG_DIR = PROJECT_ROOT / "logs"
+
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 
 
