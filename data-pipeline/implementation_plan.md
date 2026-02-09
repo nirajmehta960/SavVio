@@ -12,8 +12,6 @@ Pipeline for **3 datasets** using a **hybrid storage approach**:
 
 ---
 
-<<<<<<< HEAD
-=======
 ## Feature Analysis
 
 ### Financial Data (`financial_data.csv`)
@@ -46,7 +44,6 @@ Pipeline for **3 datasets** using a **hybrid storage approach**:
 
 ---
 
->>>>>>> 96a9ee6 (feat: update implementation plan with AI price imputation and null handling strategy)
 ## Execution Order
 
 ### Phase 1: Data Loading
