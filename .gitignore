@@ -44,11 +44,6 @@ ENV/
 .env.local
 .env.*.local
 
-# DVC
-.dvc/cache
-.dvc/tmp
-*.dvc
-.dvcignore
 
 # Data files (large files should be tracked with DVC)
 data-pipeline/data/raw/*
