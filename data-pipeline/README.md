@@ -5,6 +5,8 @@
 **Project:** SavVio - AI-Driven Financial Advocacy Tool  
 **Team Members:** Murtaza Nipplewala, Niraj Mehta, Wen-Hsin Su, Pranathi Bombay, Rishabh Joshi, Sanjana Patnam
 
+> 📋 **Detailed Implementation Plan:** [implementation_plan.md](./implementation_plan.md) - Hybrid JSONB approach with vector embeddings
+
 ---
 
 ## Pipeline Execution Order
@@ -579,60 +581,54 @@ Detect data anomalies (outliers, suspicious patterns) and trigger alerts when is
 ### Objective
 Clean, transform, and standardize validated data into a consistent format ready for feature engineering.
 
+> 📋 **See detailed implementation plan:** [implementation_plan.md](./implementation_plan.md)
+
+### Storage Strategy (Hybrid Approach)
+
+| Dataset | Format | Storage | Rationale |
+|---------|--------|---------|-----------|
+| `financial_data.csv` | CSV | Traditional columns | Structured, fixed schema |
+| `product_data.jsonl` | JSONL | **JSONB** + vector columns | Flexible schema, direct ingestion |
+| `review_data.jsonl` | JSONL | **JSONB** + vector columns | Flexible schema, direct ingestion |
+
 ### Steps
 
-1. **Create modular preprocessing package**
-   ```
-   scripts/
-   ├── preprocess/
-   │   ├── __init__.py
-   │   ├── financial.py      # Financial preprocessing
-   │   ├── product.py        # Product preprocessing
-   │   └── utils.py          # Shared utilities
-   └── run_preprocessing.py  # Main entry point
-   ```
-
-2. **Data cleaning**
-
-   **Financial Data:**
+1. **Financial Data (CSV) - Traditional Processing**
    - Handle missing values (impute median for optional fields, flag for required)
-   - Standardize transaction categories (e.g., "Netflix" → "subscription")
+   - Type conversion (floats, integers, dates)
+   - Validate ranges (income >= 0, credit score 300-850)
    - Remove exact duplicate records
+
+2. **Product/Review Data (JSONL) - JSONB Storage**
    
-   **Product Data:**
-   - Remove duplicate products (by name + price)
-   - Standardize price format (ensure float, 2 decimal places)
-   - Clean product names (trim whitespace, normalize case)
-
-3. **Data transformation**
-
-   **Financial Data:**
-   - Convert all values to monthly format:
-     - Annual income ÷ 12
-     - Weekly expenses × 4.33
-   - Categorize expenses into: rent, subscriptions, loans, utilities, other
-   - Calculate total fixed expenses
+   **No flattening required** - store entire JSON as JSONB in PostgreSQL.
    
-   **Product Data:**
-   - Standardize category names (lowercase, consistent naming)
-   - Extract key specs from description (if applicable)
+   **Missing Value Handling at Embedding Extraction:**
+   | Field | Issue | Action |
+   |-------|-------|--------|
+   | `price` | Many nulls | Keep null (handle at query time) |
+   | `description` | Empty `[]` | → empty string for embedding |
+   | `features` | Missing | Default `[]` → empty string |
+   | `details` | Missing keys | Extract available keys only |
+   | `title`/`text` | Empty | → empty string for embedding |
 
-4. **Save processed data in CSV format**
-   - Output to `data/processed/financial_processed.csv`
-   - Output to `data/processed/products_processed.csv`
+3. **Output Locations**
+   - Financial: `data/processed/financial_processed.csv`
+   - Product: Direct to PostgreSQL as JSONB
+   - Review: Direct to PostgreSQL as JSONB
 
 ### Tools/Services
 
 | Tool | Purpose |
 |------|---------|
-| Pandas | Data manipulation |
-| NumPy | Numerical operations |
-| Python re (regex) | Text cleaning |
+| Pandas | Financial CSV manipulation |
+| PostgreSQL JSONB | Native JSON storage for product/review |
+| psycopg2/SQLAlchemy | Database connection |
 
 ### SavVio-Specific Considerations
-- Monthly format is critical for consistent affordability calculations
-- Recurring expense identification accuracy target: 95%+ (key metric)
-- Preprocessing logic must be deterministic for reproducibility
+- Hybrid approach: Structured columns for financial, JSONB for product/review
+- No preprocessing needed for JSONL files (direct to DB)
+- Missing values handled at embedding generation time
 
 ---
 
