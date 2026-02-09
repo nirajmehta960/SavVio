@@ -12,14 +12,49 @@ Pipeline for **3 datasets** using a **hybrid storage approach**:
 
 ---
 
+<<<<<<< HEAD
+=======
+## Feature Analysis
+
+### Financial Data (`financial_data.csv`)
+**All Available Columns:**
+- `user_id`, `age`, `gender`, `education_level`, `employment_status`, `job_title`
+- `monthly_income_usd`, `monthly_expenses_usd`, `savings_usd`
+- `has_loan`, `loan_type`, `loan_amount_usd`, `loan_term_months`, `monthly_emi_usd`, `loan_interest_rate_pct`
+- `debt_to_income_ratio`, `credit_score`, `savings_to_income_ratio`, `region`, `record_date`
+
+**Selected Features:**
+- **Raw columns**: `monthly_income_usd`, `monthly_expenses_usd`, `savings_usd`, `debt_to_income_ratio`, `credit_score`
+- **Engineered**: `discretionary_income`, `expense_burden_ratio`, `emergency_fund_months`
+
+### Product Data (`product_data.jsonl`)
+**All Available Keys:**
+- `main_category`, `title`, `average_rating`, `rating_number`
+- `features`, `description`, `price`, `images`, `videos`
+- `store`, `categories`, `details`, `parent_asin`
+
+**Selected for Embeddings:**
+- `features`, `description`, `details`
+
+### Review Data (`review_data.jsonl`)
+**All Available Keys:**
+- `rating`, `title`, `text`, `images`, `asin`, `parent_asin`
+- `user_id`, `timestamp`, `helpful_vote`, `verified_purchase`
+
+**Selected for Embeddings:**
+- `title`, `text`
+
+---
+
+>>>>>>> 96a9ee6 (feat: update implementation plan with AI price imputation and null handling strategy)
 ## Execution Order
 
 ### Phase 1: Data Loading
 | Step | Dataset | Action |
 |------|---------|--------|
 | 1.1 | `financial_data.csv` | Parse CSV with pandas |
-| 1.2 | `product_data.jsonl` | Stream JSONL (no flattening) |
-| 1.3 | `review_data.jsonl` | Stream JSONL (no flattening) |
+| 1.2 | `product_data.jsonl` | Stream JSONL |
+| 1.3 | `review_data.jsonl` | Stream JSONL |
 
 ### Phase 2: Preprocessing
 | Dataset | Actions |
@@ -31,7 +66,8 @@ Pipeline for **3 datasets** using a **hybrid storage approach**:
 **Missing Value Handling (Product/Review):**
 | Field | Issue | Action |
 |-------|-------|--------|
-| `price` | Many nulls | Keep null (handle at query time) |
+| `price` | 43% nulls | **AI-based imputation** (LLM analyzes dataset price patterns) |
+| `bought_together` | 100% nulls | **Drop field** (no data available) |
 | `description` | Empty `[]` | → empty string for embedding |
 | `features` | Missing | Default `[]` → empty string |
 | `details` | Missing keys | Extract available keys only |
@@ -41,7 +77,7 @@ Pipeline for **3 datasets** using a **hybrid storage approach**:
 | Dataset | Validation Rules |
 |---------|-----------------|
 | Financial | `monthly_income_usd >= 0`, `credit_score` in [300, 850] |
-| Product | Valid JSON, `parent_asin` exists, `average_rating` in [1.0, 5.0] |
+| Product | Valid JSON, `parent_asin` exists, `average_rating` in [1.0, 5.0], `price > 0` |
 | Review | Valid JSON, `parent_asin` exists, `rating` in [1.0, 5.0] |
 
 ### Phase 4: Feature Engineering
@@ -49,9 +85,9 @@ Pipeline for **3 datasets** using a **hybrid storage approach**:
 **Financial Features:**
 | Feature | Formula |
 |---------|---------|
-| `discretionary_income` | `income - expenses - emi` |
-| `expense_burden_ratio` | `expenses / income` |
-| `emergency_fund_months` | `savings / expenses` |
+| `discretionary_income` | `monthly_income_usd - monthly_expenses_usd - monthly_emi_usd` |
+| `expense_burden_ratio` | `monthly_expenses_usd / monthly_income_usd` |
+| `emergency_fund_months` | `savings_usd / monthly_expenses_usd` |
 
 **Text Extraction for Embeddings:**
 | Dataset | Extract From JSONB |
@@ -151,9 +187,3 @@ FROM product_data ORDER BY distance LIMIT 10;
 
 ---
 
-## Verification Plan
-
-1. **Row counts**: Source records = Database records
-2. **JSONB integrity**: Sample queries verify nested data access
-3. **Vector dimensions**: All embeddings are 384-dim
-4. **Similarity search**: Test queries return relevant results
