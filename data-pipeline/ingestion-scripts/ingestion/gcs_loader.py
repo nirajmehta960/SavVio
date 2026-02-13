@@ -86,6 +86,20 @@ class GCSLoader:
                     f"Blob '{blob_name}' not found in bucket '{bucket_name}'"
                 )
             
+            # Reload metadata to ensure we have the latest MD5
+            blob.reload()
+            
+            # Smart Download Check
+            if check_md5 and os.path.exists(destination_path):
+                remote_md5 = blob.md5_hash
+                local_md5 = self._calculate_md5(destination_path)
+                
+                if remote_md5 == local_md5:
+                    logger.info(f"Skipped download: {destination_path} (Up to date)")
+                    return destination_path
+                else:
+                    logger.info(f"File changed. Downloading update for {destination_path}")
+            
             # Download the blob
             logger.info(f"Downloading gs://{bucket_name}/{blob_name} to {destination_path}")
             blob.download_to_filename(destination_path)

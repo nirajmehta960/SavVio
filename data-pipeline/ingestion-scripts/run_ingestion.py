@@ -279,7 +279,7 @@ if __name__ == "__main__":
         print(f"  Sample:\n{review_df.head(3)}")
         
         print("\n" + "=" * 80)
-        print("✓ Standalone ingestion test completed successfully")
+        print("Standalone ingestion test completed successfully")
         print("=" * 80)
         
     except Exception as e:
