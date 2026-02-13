@@ -47,7 +47,6 @@ ENV/
 # DVC
 .dvc/cache
 .dvc/tmp
-*.dvc
 .dvcignore
 
 # Data files (large files should be tracked with DVC)
@@ -111,6 +110,7 @@ temp/
 # Secrets and credentials
 secrets/
 credentials/
+data-pipeline/config/
 *.pem
 *.key
 *.crt
@@ -119,3 +119,4 @@ credentials/
 *.pyc
 *.pyo
 *.pyd
+.env
