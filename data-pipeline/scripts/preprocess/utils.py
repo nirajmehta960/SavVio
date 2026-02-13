@@ -1,42 +1,27 @@
+"""Shared utilities for preprocessing."""
+import logging
 import os
 
-import pandas as pd
+LOG_FORMAT = "[%(asctime)s] [%(levelname)s] [%(name)s] %(message)s"
 
 
-def load_csv(path):
-    return pd.read_csv(path)
+def setup_logging(level: int = logging.INFO) -> None:
+    """Configure logging for preprocessing scripts."""
+    logging.basicConfig(level=level, format=LOG_FORMAT, datefmt="%Y-%m-%d %H:%M:%S")
 
 
-def save_csv(df, path):
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    df.to_csv(path, index=False)
+def get_raw_path(filename: str, base_dir: str = "data/raw") -> str:
+    """Return path to a raw data file (relative to data-pipeline)."""
+    return os.path.join(base_dir, filename)
 
 
-def normalize_whitespace(value):
-    if pd.isna(value):
-        return value
-    return " ".join(str(value).split())
+def get_processed_path(filename: str, base_dir: str = "data/processed") -> str:
+    """Return path to a processed data file (relative to data-pipeline)."""
+    return os.path.join(base_dir, filename)
 
 
-def to_bool(value):
-    if isinstance(value, bool):
-        return value
-    if pd.isna(value):
-        return False
-    text = str(value).strip().lower()
-    return text in {"true", "1", "yes", "y", "t"}
-
-
-def normalize_pipe_list(value):
-    if pd.isna(value):
-        return value
-    parts = [part.strip().lower() for part in str(value).split("|") if part.strip()]
-    return " | ".join(parts)
-
-
-def fill_numeric_median(series, default=0):
-    numeric = pd.to_numeric(series, errors="coerce")
-    median = numeric.median()
-    if pd.isna(median):
-        median = default
-    return numeric.fillna(median)
+def ensure_output_dir(file_path: str) -> None:
+    """Ensure the directory for file_path exists."""
+    dir_path = os.path.dirname(file_path)
+    if dir_path:
+        os.makedirs(dir_path, exist_ok=True)

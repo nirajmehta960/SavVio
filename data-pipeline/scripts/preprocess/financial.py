@@ -1,143 +1,184 @@
+"""Deterministic preprocessing pipeline for financial decision logic."""
+
+from __future__ import annotations
+
+import logging
+from typing import Callable, Dict, List
+
+import numpy as np
 import pandas as pd
 
-from .utils import fill_numeric_median, load_csv, save_csv
+from .utils import ensure_output_dir, get_processed_path, get_raw_path, setup_logging
 
 
-MONETARY_COLUMNS = [
-    "income_usd",
-    "expenses_usd",
+LOGGER = logging.getLogger("preprocess.financial")
+
+INPUT_FILENAME = "financial_data.csv"
+OUTPUT_FILENAME = "financial_preprocessed.csv"
+
+KEEP_COLUMNS: List[str] = [
+    "user_id",
+    "monthly_income_usd",
+    "monthly_expenses_usd",
     "savings_usd",
-    "monthly_income",
-    "monthly_expenses",
-    "monthly_savings",
-    "rent_expenses_usd",
-    "subscriptions_expenses_usd",
-    "loans_expenses_usd",
-    "utilities_expenses_usd",
-    "other_expenses_usd",
-    "total_fixed_expenses",
+    "has_loan",
+    "loan_amount_usd",
+    "monthly_emi_usd",
+    "loan_interest_rate_pct",
+    "loan_term_months",
+    "credit_score",
+    "employment_status",
+    "region",
 ]
 
-OPTIONAL_NUMERIC_COLUMNS = ["credit_score", "age"]
+DEMOGRAPHIC_COLUMNS_DROPPED = [
+    "age",
+    "gender",
+    "education_level",
+    "job_title",
+    "loan_type",
+    "record_date",
+    "debt_to_income_ratio",
+    "savings_to_income_ratio",
+]
+
+MONETARY_FLOAT_COLUMNS: List[str] = [
+    "monthly_income_usd",
+    "monthly_expenses_usd",
+    "savings_usd",
+    "loan_amount_usd",
+    "monthly_emi_usd",
+    "loan_interest_rate_pct",
+]
+
+CRITICAL_REQUIRED_COLUMNS: List[str] = [
+    "monthly_income_usd",
+    "monthly_expenses_usd",
+    "savings_usd",
+    "credit_score",
+]
+
+LOAN_NUMERIC_COLUMNS: List[str] = ["loan_amount_usd", "monthly_emi_usd", "loan_interest_rate_pct"]
 
 
-def preprocess_financial(input_path, output_path):
-    df = load_csv(input_path)
+def _validate_required_columns(df: pd.DataFrame, required_columns: List[str]) -> None:
+    """Raise a clear error when expected columns are missing from source data."""
+    missing = sorted(set(required_columns) - set(df.columns))
+    if missing:
+        raise ValueError(f"Input CSV is missing required columns: {missing}")
 
-    df = df.drop_duplicates()
 
-    df = df.rename(
-        columns={
-            "income": "income_usd",
-            "expenses": "expenses_usd",
-            "savings": "savings_usd",
-        }
+def _print_frame_snapshot(df: pd.DataFrame, title: str, rows: int = 5) -> None:
+    """Print compact, deterministic frame preview."""
+    print(f"\n{title}")
+    print("-" * len(title))
+    print(f"Shape: {df.shape}")
+    print(f"Columns: {list(df.columns)}")
+    print(df.head(rows).to_string(index=False))
+
+
+def _to_binary_has_loan(value: object) -> int:
+    """Normalize has_loan into deterministic binary values."""
+    if pd.isna(value):
+        return 0
+
+    normalized = str(value).strip().lower()
+    if normalized in {"1", "true", "yes", "y", "loan", "has_loan"}:
+        return 1
+    if normalized in {"0", "false", "no", "n", "none", "no_loan", ""}:
+        return 0
+
+    # Fallback: any non-empty unknown token is treated conservatively as loan present.
+    return 1
+
+
+def preprocess_financial_data(input_path: str, output_path: str) -> pd.DataFrame:
+    """Run deterministic preprocessing and save processed financial data."""
+    LOGGER.info("Loading dataset from: %s", input_path)
+    df = pd.read_csv(input_path)
+    _validate_required_columns(df, KEEP_COLUMNS)
+
+    rows_loaded = len(df)
+    LOGGER.info("Rows loaded: %d", rows_loaded)
+    _print_frame_snapshot(df, title="Loaded Dataset")
+
+    # Keep only explicitly approved fields for affordability logic.
+    df = df.loc[:, KEEP_COLUMNS].copy()
+    LOGGER.info(
+        "Dropped non-required columns including demographics (%s).",
+        ", ".join(DEMOGRAPHIC_COLUMNS_DROPPED),
+    )
+    LOGGER.info(
+        "Demographic fields are removed to reduce bias risk and keep decisions based on financial behavior only."
     )
 
-    if "income_usd" in df.columns:
-        df["income_usd"] = pd.to_numeric(df["income_usd"], errors="coerce")
-        df["income_missing"] = df["income_usd"].isna()
-        df["income_usd"] = fill_numeric_median(df["income_usd"], default=0).clip(lower=0)
+    # Enforce numeric types deterministically; invalid parsing becomes NaN for explicit handling later.
+    for col in MONETARY_FLOAT_COLUMNS:
+        df[col] = pd.to_numeric(df[col], errors="coerce").astype(float)
+    df["loan_term_months"] = pd.to_numeric(df["loan_term_months"], errors="coerce").astype("Int64")
 
-    for column in ["expenses_usd", "savings_usd"]:
-        if column in df.columns:
-            df[column] = fill_numeric_median(df[column], default=0).clip(lower=0)
+    df["credit_score"] = pd.to_numeric(df["credit_score"], errors="coerce")
+    df["has_loan"] = df["has_loan"].apply(_to_binary_has_loan).astype(np.int8)
 
-    for column in OPTIONAL_NUMERIC_COLUMNS:
-        if column in df.columns:
-            df[column] = fill_numeric_median(df[column], default=0).clip(lower=0)
+    # Remove duplicate user records deterministically by keeping first occurrence.
+    before_dedup = len(df)
+    df = df.drop_duplicates(subset=["user_id"], keep="first")
+    duplicates_removed = before_dedup - len(df)
+    LOGGER.info("Duplicates removed (by user_id): %d", duplicates_removed)
 
-    if "income_usd" in df.columns:
-        df["monthly_income"] = (df["income_usd"] / 12).round(2)
-    if "expenses_usd" in df.columns:
-        df["monthly_expenses"] = (df["expenses_usd"] / 12).round(2)
-    elif "weekly_expenses" in df.columns:
-        weekly_expenses = fill_numeric_median(df["weekly_expenses"], default=0).clip(
-            lower=0
-        )
-        df["monthly_expenses"] = (weekly_expenses * 4.33).round(2)
-    if "savings_usd" in df.columns:
-        df["monthly_savings"] = (df["savings_usd"] / 12).round(2)
+    # Strict missing policy for critical financial integrity columns.
+    before_missing_drop = len(df)
+    df = df.dropna(subset=CRITICAL_REQUIRED_COLUMNS)
+    missing_rows_dropped = before_missing_drop - len(df)
+    LOGGER.info("Rows dropped (missing critical fields): %d", missing_rows_dropped)
 
-    if "monthly_expenses" in df.columns:
-        df["total_fixed_expenses"] = df["monthly_expenses"].round(2)
+    # Non-critical has_loan defaults to no-loan.
+    df["has_loan"] = df["has_loan"].fillna(0).astype(np.int8)
 
-        # Deterministic split of monthly expenses into categories.
-        rent_ratio = 0.35
-        subscriptions_ratio = 0.1
-        loans_ratio = 0.3
-        utilities_ratio = 0.2
-        other_ratio = 0.05
+    # Only set loan metrics to zero when there is no loan.
+    no_loan_mask = df["has_loan"] == 0
+    for col in LOAN_NUMERIC_COLUMNS:
+        df.loc[no_loan_mask, col] = df.loc[no_loan_mask, col].fillna(0.0)
 
-        df["rent_expenses_usd"] = (df["monthly_expenses"] * rent_ratio).round(2)
-        df["subscriptions_expenses_usd"] = (
-            df["monthly_expenses"] * subscriptions_ratio
-        ).round(2)
-        df["loans_expenses_usd"] = (df["monthly_expenses"] * loans_ratio).round(2)
-        df["utilities_expenses_usd"] = (
-            df["monthly_expenses"] * utilities_ratio
-        ).round(2)
-        df["other_expenses_usd"] = (df["monthly_expenses"] * other_ratio).round(2)
+    # Finalize credit score as int after missing values are removed.
+    df["credit_score"] = df["credit_score"].astype(int)
 
-    for column in MONETARY_COLUMNS:
-        if column in df.columns:
-            df[column] = pd.to_numeric(df[column], errors="coerce").round(2)
+    # Apply range validation rules one by one and log removals per rule.
+    rules: Dict[str, Callable[[pd.DataFrame], pd.Series]] = {
+        "monthly_income_usd < 0": lambda frame: frame["monthly_income_usd"] < 0,
+        "monthly_expenses_usd < 0": lambda frame: frame["monthly_expenses_usd"] < 0,
+        "savings_usd < 0": lambda frame: frame["savings_usd"] < 0,
+        "credit_score not in [300, 850]": lambda frame: ~frame["credit_score"].between(300, 850, inclusive="both"),
+    }
 
-    if "loan_status" in df.columns:
-        df["loan_status"] = pd.to_numeric(df["loan_status"], errors="coerce").fillna(0)
-        df["loan_status"] = df["loan_status"].clip(lower=0, upper=1).astype(int)
+    total_range_violations_dropped = 0
+    for rule_name, rule_fn in rules.items():
+        violation_mask = rule_fn(df)
+        removed_for_rule = int(violation_mask.sum())
+        if removed_for_rule:
+            df = df.loc[~violation_mask].copy()
+            total_range_violations_dropped += removed_for_rule
+        LOGGER.info("Rows dropped (range rule '%s'): %d", rule_name, removed_for_rule)
 
-    if "transaction_category" in df.columns:
-        df["transaction_category"] = (
-            df["transaction_category"].fillna("").astype(str).str.strip().str.lower()
-        )
-        df["transaction_category"] = df["transaction_category"].replace(
-            {
-                "netflix": "subscription",
-                "spotify": "subscription",
-                "prime": "subscription",
-                "electric": "utilities",
-                "power": "utilities",
-                "water": "utilities",
-                "rent payment": "rent",
-            }
-        )
+    LOGGER.info("Rows dropped (range violations total): %d", total_range_violations_dropped)
 
-    df = df.drop(
-        columns=["gender", "region", "employment_status", "timestamp"], errors="ignore"
-    )
+    _print_frame_snapshot(df, title="Final Preprocessed Dataset")
 
-    ordered_columns = [
-        "id",
-        "age",
-        "income_usd",
-        "expenses_usd",
-        "savings_usd",
-        "credit_score",
-        "loan_status",
-        "income_missing",
-        "monthly_income",
-        "monthly_expenses",
-        "monthly_savings",
-        "rent_expenses_usd",
-        "subscriptions_expenses_usd",
-        "loans_expenses_usd",
-        "utilities_expenses_usd",
-        "other_expenses_usd",
-        "total_fixed_expenses",
-    ]
-    remaining_columns = [col for col in df.columns if col not in ordered_columns]
-    df = df[[col for col in ordered_columns if col in df.columns] + remaining_columns]
+    ensure_output_dir(output_path)
+    df.to_csv(output_path, index=False)
+    LOGGER.info("Saved preprocessed dataset to: %s", output_path)
+    LOGGER.info("Final row count: %d", len(df))
 
-    monetary_df = df[[col for col in MONETARY_COLUMNS if col in df.columns]]
-    if (monetary_df < 0).any().any():
-        raise AssertionError("Negative values found in monetary columns.")
-
-    if df.isna().any().any():
-        raise AssertionError("NaN values remain after preprocessing.")
-
-    if df.duplicated().any():
-        raise AssertionError("Duplicate rows found after preprocessing.")
-
-    save_csv(df, output_path)
     return df
+
+
+def main() -> None:
+    """Entry point for running deterministic financial preprocessing."""
+    setup_logging()
+    input_path = get_raw_path(INPUT_FILENAME)
+    output_path = get_processed_path(OUTPUT_FILENAME)
+    preprocess_financial_data(input_path=input_path, output_path=output_path)
+
+
+if __name__ == "__main__":
+    main()

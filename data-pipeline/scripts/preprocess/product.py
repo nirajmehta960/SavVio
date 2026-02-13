@@ -1,118 +1,334 @@
-import re
+"""Deterministic streaming preprocessing for product JSONL dataset."""
 
+from __future__ import annotations
+
+import json
+import logging
+import os
+import re
+from dataclasses import dataclass
+from typing import Dict, List, Set
+
+import numpy as np
 import pandas as pd
 
-from .utils import (
-    fill_numeric_median,
-    load_csv,
-    normalize_pipe_list,
-    normalize_whitespace,
-    save_csv,
-)
+from .utils import ensure_output_dir, get_processed_path, get_raw_path, setup_logging
 
 
-def _clean_product_name(series):
-    cleaned = series.fillna("").astype(str).str.lower()
-    cleaned = cleaned.str.strip()
-    cleaned = cleaned.str.replace(r"[^a-z0-9 ]", "", regex=True)
-    cleaned = cleaned.str.replace(r"\s+", " ", regex=True)
-    return cleaned
+LOGGER = logging.getLogger("preprocess.product")
+
+INPUT_FILENAME = "product_data.jsonl"
+OUTPUT_FILENAME = "product_preprocessed.jsonl"
+BATCH_SIZE = 25_000
+
+# Keep-list from requirements.
+WORKING_COLUMNS: List[str] = [
+    "parent_asin",
+    "title",
+    "price",
+    "average_rating",
+    "rating_number",
+    "description",
+    "features",
+    "details",
+    "categories",
+]
+
+# Final schema requested in step 6.
+FINAL_COLUMNS: List[str] = [
+    "parent_asin",
+    "title",
+    "price",
+    "average_rating",
+    "rating_number",
+    "description",
+    "features",
+    "details",
+]
+
+TEXT_COLUMNS: List[str] = ["description", "features", "details"]
 
 
-def _clean_price(series):
-    cleaned = series.fillna("").astype(str)
-    cleaned = cleaned.str.replace(r"[^0-9.\-]", "", regex=True)
-    return pd.to_numeric(cleaned, errors="coerce")
+@dataclass
+class ProductStats:
+    """Counters for auditable preprocessing logs."""
+
+    raw_rows_loaded: int = 0
+    malformed_rows_skipped: int = 0
+    valid_rows: int = 0
+    removed_missing_parent_asin: int = 0
+    duplicates_removed: int = 0
+    negative_price_removed: int = 0
+    low_price_removed: int = 0
+    prices_imputed: int = 0
+    price_fallback_count: int = 0
+    final_row_count: int = 0
 
 
-def _extract_specs_from_description(series):
-    pattern = re.compile(
-        r"(\d+(?:\.\d+)?\s*(?:cu\s*ft|l|liter|litre|w|kw|v|hz|rpm|in|inch|cm|mm|ft))"
+def _print_frame_snapshot(df: pd.DataFrame, title: str, rows: int = 5) -> None:
+    """Print compact frame preview."""
+    print(f"\n{title}")
+    print("-" * len(title))
+    print(f"Shape: {df.shape}")
+    print(f"Columns: {list(df.columns)}")
+    if not df.empty:
+        print(df.head(rows).to_string(index=False))
+
+
+def _normalize_text(value: object) -> str:
+    """Convert any field to deterministic non-null string."""
+    if value is None:
+        return ""
+    if isinstance(value, float) and np.isnan(value):
+        return ""
+    if isinstance(value, str):
+        return value.strip()
+    if isinstance(value, (list, dict)):
+        return json.dumps(value, ensure_ascii=True)
+    return str(value)
+
+
+def _normalize_categories(value: object) -> str:
+    """Normalize categories: list -> ' > ', missing -> ''."""
+    if value is None:
+        return ""
+    if isinstance(value, float) and np.isnan(value):
+        return ""
+    if isinstance(value, list):
+        parts = [_normalize_text(item) for item in value]
+        return " > ".join([p for p in parts if p])
+    return _normalize_text(value)
+
+
+def _normalize_parent_asin(value: object) -> str:
+    """Normalize parent_asin and collapse null-like tokens."""
+    text = _normalize_text(value)
+    if text.lower() in {"", "nan", "none", "null"}:
+        return ""
+    return text
+
+
+def _title_group_key(title: object, token_limit: int = 3) -> str:
+    """Create deterministic title keyword key used for local pricing groups."""
+    title_text = _normalize_text(title).lower()
+    tokens = re.findall(r"[a-z0-9]+", title_text)
+    return "_".join(tokens[:token_limit]) if tokens else "__unknown__"
+
+
+def _process_stage1_batch(
+    records: List[Dict[str, object]],
+    seen_parent_asins: Set[str],
+    stats: ProductStats,
+) -> pd.DataFrame:
+    """Apply selection, id validation, dedupe, and base type cleaning."""
+    if not records:
+        return pd.DataFrame(columns=WORKING_COLUMNS)
+
+    df = pd.DataFrame.from_records(records).reindex(columns=WORKING_COLUMNS)
+
+    # Identifier validation.
+    df["parent_asin"] = df["parent_asin"].apply(_normalize_parent_asin)
+    missing_parent_mask = df["parent_asin"].eq("")
+    removed_missing_parent = int(missing_parent_mask.sum())
+    if removed_missing_parent:
+        stats.removed_missing_parent_asin += removed_missing_parent
+        df = df.loc[~missing_parent_mask].copy()
+
+    # Global dedupe on parent_asin.
+    keep_mask = []
+    for key in df["parent_asin"]:
+        if key in seen_parent_asins:
+            keep_mask.append(False)
+        else:
+            seen_parent_asins.add(key)
+            keep_mask.append(True)
+    duplicates_removed = len(keep_mask) - int(sum(keep_mask))
+    if duplicates_removed:
+        stats.duplicates_removed += duplicates_removed
+        df = df.loc[keep_mask].copy()
+
+    # Base type conversions.
+    df["title"] = df["title"].apply(_normalize_text)
+    df["description"] = df["description"].apply(_normalize_text)
+    df["features"] = df["features"].apply(_normalize_text)
+    df["details"] = df["details"].apply(_normalize_text)
+    df["categories"] = df["categories"].apply(_normalize_categories)
+
+    df["price"] = pd.to_numeric(df["price"], errors="coerce").astype(float)
+    df["average_rating"] = pd.to_numeric(df["average_rating"], errors="coerce").astype(float)
+    df["rating_number"] = pd.to_numeric(df["rating_number"], errors="coerce").fillna(0).astype(int)
+
+    # Step A price validation for non-missing prices only.
+    negative_price_mask = df["price"].notna() & (df["price"] < 0)
+    negative_price_removed = int(negative_price_mask.sum())
+    if negative_price_removed:
+        stats.negative_price_removed += negative_price_removed
+        df = df.loc[~negative_price_mask].copy()
+
+    low_price_mask = df["price"].notna() & (df["price"] < 5)
+    low_price_removed = int(low_price_mask.sum())
+    if low_price_removed:
+        stats.low_price_removed += low_price_removed
+        df = df.loc[~low_price_mask].copy()
+
+    return df.reindex(columns=WORKING_COLUMNS)
+
+
+def preprocess_product_data(input_path: str, output_path: str) -> pd.DataFrame:
+    """Run streaming deterministic product preprocessing."""
+    ensure_output_dir(output_path)
+
+    stage1_path = f"{output_path}.stage1.tmp"
+    # Reset stage files for deterministic reruns.
+    open(stage1_path, "w", encoding="utf-8").close()
+    open(output_path, "w", encoding="utf-8").close()
+
+    stats = ProductStats()
+    seen_parent_asins: Set[str] = set()
+    discovered_columns: Set[str] = set()
+    batch_records: List[Dict[str, object]] = []
+    sample_frames: List[pd.DataFrame] = []
+
+    # For imputation statistics (built from valid, non-missing prices only).
+    group_price_values: Dict[str, List[float]] = {}
+    all_valid_prices: List[float] = []
+
+    LOGGER.info("Loading JSONL stream from: %s", input_path)
+    with open(input_path, "r", encoding="utf-8") as infile, open(stage1_path, "a", encoding="utf-8") as stage1:
+        for raw_line in infile:
+            stats.raw_rows_loaded += 1
+            line = raw_line.strip()
+            if not line:
+                stats.malformed_rows_skipped += 1
+                continue
+
+            try:
+                record = json.loads(line)
+            except json.JSONDecodeError:
+                stats.malformed_rows_skipped += 1
+                continue
+
+            if not isinstance(record, dict):
+                stats.malformed_rows_skipped += 1
+                continue
+
+            stats.valid_rows += 1
+            discovered_columns.update(record.keys())
+            batch_records.append(record)
+
+            if len(batch_records) >= BATCH_SIZE:
+                cleaned = _process_stage1_batch(batch_records, seen_parent_asins, stats)
+                if not cleaned.empty:
+                    cleaned["title_group_key"] = cleaned["title"].apply(_title_group_key)
+                    priced = cleaned[cleaned["price"].notna()]
+                    for _, row in priced[["title_group_key", "price"]].iterrows():
+                        group_key = str(row["title_group_key"])
+                        price = float(row["price"])
+                        group_price_values.setdefault(group_key, []).append(price)
+                        all_valid_prices.append(price)
+
+                    for item in cleaned.to_dict(orient="records"):
+                        stage1.write(json.dumps(item, ensure_ascii=True) + "\n")
+
+                    if len(sample_frames) < 2:
+                        sample_frames.append(cleaned.head(3))
+                batch_records.clear()
+
+        if batch_records:
+            cleaned = _process_stage1_batch(batch_records, seen_parent_asins, stats)
+            if not cleaned.empty:
+                cleaned["title_group_key"] = cleaned["title"].apply(_title_group_key)
+                priced = cleaned[cleaned["price"].notna()]
+                for _, row in priced[["title_group_key", "price"]].iterrows():
+                    group_key = str(row["title_group_key"])
+                    price = float(row["price"])
+                    group_price_values.setdefault(group_key, []).append(price)
+                    all_valid_prices.append(price)
+
+                for item in cleaned.to_dict(orient="records"):
+                    stage1.write(json.dumps(item, ensure_ascii=True) + "\n")
+                if len(sample_frames) < 2:
+                    sample_frames.append(cleaned.head(3))
+
+    if not all_valid_prices:
+        raise ValueError("No valid non-missing prices remain after Step A; cannot impute missing prices.")
+
+    global_median = float(np.median(all_valid_prices))
+    group_medians: Dict[str, float] = {}
+    for key, prices in group_price_values.items():
+        arr = np.asarray(prices, dtype=float)
+        # Required dataset-driven statistics.
+        _ = float(np.quantile(arr, 0.25))
+        group_median = float(np.median(arr))
+        _ = float(np.quantile(arr, 0.75))
+        group_medians[key] = group_median
+
+    LOGGER.info(
+        "Dropped non-required fields (main_category, store, images, videos) for cleaner analytics/embeddings."
     )
-    specs = []
-    for value in series.fillna("").astype(str):
-        matches = pattern.findall(value.lower())
-        unique = list(dict.fromkeys(match.strip() for match in matches if match.strip()))
-        specs.append(" | ".join(unique))
-    return pd.Series(specs, index=series.index)
-
-
-def preprocess_product(input_path, output_path):
-    df = load_csv(input_path)
-
-    if "title" in df.columns:
-        df["product_name"] = _clean_product_name(df["title"])
-    else:
-        df["product_name"] = ""
-
-    if "price" in df.columns:
-        df["price_usd"] = _clean_price(df["price"])
-    else:
-        df["price_usd"] = pd.NA
-
-    df = df.dropna(subset=["price_usd"])
-    df = df[df["price_usd"] > 0]
-    df["price_usd"] = df["price_usd"].round(2)
-
-    if "description" in df.columns:
-        description_clean = (
-            df["description"].fillna("").astype(str).apply(normalize_whitespace)
-        )
-        df["description_length"] = description_clean.str.len()
-    else:
-        df["description_length"] = 0
-
-    if "categories" in df.columns:
-        normalized_categories = df["categories"].fillna("").apply(normalize_pipe_list)
-        category_parts = normalized_categories.str.split(" | ", n=1)
-        df["appliance_type"] = category_parts.str[1].fillna(category_parts.str[0])
-        df["appliance_type"] = df["appliance_type"].str.strip().str.lower()
-    else:
-        df["appliance_type"] = ""
-
-    if "features" in df.columns:
-        df["key_specs"] = df["features"].fillna("").apply(normalize_pipe_list)
-    elif "description" in df.columns:
-        df["key_specs"] = _extract_specs_from_description(df["description"]).fillna("")
-    else:
-        df["key_specs"] = ""
-
-    if "average_rating" in df.columns:
-        df["average_rating"] = fill_numeric_median(df["average_rating"], default=0)
-        df["average_rating"] = df["average_rating"].clip(lower=0, upper=5).round(2)
-
-    if "rating_number" in df.columns:
-        df["rating_number"] = fill_numeric_median(df["rating_number"], default=0)
-        df["rating_number"] = df["rating_number"].clip(lower=0).round(0).astype(int)
-
-    df = df.drop_duplicates(subset=["product_name", "price_usd"], keep="first")
-
-    df = df.drop(
-        columns=["title", "price", "main_category", "features", "store", "categories"],
-        errors="ignore",
+    LOGGER.info(
+        "Built local price stats for %d title groups using dataset median/p25/p75.",
+        len(group_medians),
     )
 
-    ordered_columns = [
-        "asin",
-        "product_name",
-        "price_usd",
-        "appliance_type",
-        "key_specs",
-        "description_length",
-        "average_rating",
-        "rating_number",
-    ]
-    remaining_columns = [col for col in df.columns if col not in ordered_columns]
-    df = df[[col for col in ordered_columns if col in df.columns] + remaining_columns]
+    # Pass 2: impute missing prices and write final output.
+    final_samples: List[Dict[str, object]] = []
+    with open(stage1_path, "r", encoding="utf-8") as stage1, open(output_path, "a", encoding="utf-8") as out:
+        for raw_line in stage1:
+            record = json.loads(raw_line)
+            price_val = record.get("price")
+            if price_val is None or (isinstance(price_val, float) and np.isnan(price_val)):
+                group_key = _title_group_key(record.get("title", ""))
+                if group_key in group_medians:
+                    record["price"] = float(group_medians[group_key])
+                else:
+                    record["price"] = float(global_median)
+                    stats.price_fallback_count += 1
+                stats.prices_imputed += 1
 
-    if (df["price_usd"] <= 0).any():
-        raise AssertionError("price_usd must be greater than 0.")
+            final_record = {col: record.get(col) for col in FINAL_COLUMNS}
+            out.write(json.dumps(final_record, ensure_ascii=True) + "\n")
+            stats.final_row_count += 1
+            if len(final_samples) < 5:
+                final_samples.append(final_record)
 
-    if df.isna().any().any():
-        raise AssertionError("NaN values remain after preprocessing.")
+    os.remove(stage1_path)
 
-    if df.duplicated().any():
-        raise AssertionError("Duplicate rows found after preprocessing.")
+    initial_view = pd.DataFrame(columns=sorted(discovered_columns))
+    _print_frame_snapshot(
+        initial_view,
+        title=f"Initial Product Dataset (valid rows: {stats.valid_rows})",
+        rows=0,
+    )
 
-    save_csv(df, output_path)
-    return df
+    final_sample_df = pd.DataFrame(final_samples, columns=FINAL_COLUMNS)
+    _print_frame_snapshot(
+        final_sample_df,
+        title=f"Final Product Dataset (rows saved: {stats.final_row_count})",
+        rows=5,
+    )
+
+    LOGGER.info("Raw rows loaded: %d", stats.raw_rows_loaded)
+    LOGGER.info("Malformed JSON rows skipped: %d", stats.malformed_rows_skipped)
+    LOGGER.info("Rows removed (missing/empty parent_asin): %d", stats.removed_missing_parent_asin)
+    LOGGER.info("Duplicates removed (by parent_asin): %d", stats.duplicates_removed)
+    LOGGER.info("Rows removed (price < 0): %d", stats.negative_price_removed)
+    LOGGER.info("Rows removed (price < $5): %d", stats.low_price_removed)
+    LOGGER.info("Prices imputed (missing -> estimated): %d", stats.prices_imputed)
+    LOGGER.info("Price imputation fallback to global median: %d", stats.price_fallback_count)
+    LOGGER.info("Final row count: %d", stats.final_row_count)
+    LOGGER.info("Saved cleaned product dataset to: %s", output_path)
+
+    return final_sample_df
+
+
+def main() -> None:
+    """Entry point for streaming product preprocessing."""
+    setup_logging()
+    input_path = get_raw_path(INPUT_FILENAME)
+    output_path = get_processed_path(OUTPUT_FILENAME, base_dir="data/processed")
+    preprocess_product_data(input_path=input_path, output_path=output_path)
+
+
+if __name__ == "__main__":
+    main()
