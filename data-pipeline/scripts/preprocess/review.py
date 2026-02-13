@@ -32,10 +32,10 @@ INPUT_COLUMNS: List[str] = [
 FINAL_COLUMNS: List[str] = [
     "user_id",
     "asin",
-    "parent_asin",
+    "product_id",
     "rating",
-    "title",
-    "text",
+    "review_title",
+    "review_text",
     "verified_purchase",
     "helpful_vote",
 ]
@@ -155,6 +155,13 @@ def _process_batch(
     if duplicate_count:
         stats.duplicates_removed += duplicate_count
         df = df.loc[keep_mask].copy()
+
+    # Rename columns for final output
+    df = df.rename(columns={
+        "parent_asin": "product_id",
+        "title": "review_title",
+        "text": "review_text"
+    })
 
     # Final exact schema.
     return df.reindex(columns=FINAL_COLUMNS)
