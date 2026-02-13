@@ -36,14 +36,15 @@ WORKING_COLUMNS: List[str] = [
 
 # Final schema requested in step 6.
 FINAL_COLUMNS: List[str] = [
-    "parent_asin",
-    "title",
+    "product_id",
+    "product_name",
     "price",
     "average_rating",
     "rating_number",
     "description",
     "features",
     "details",
+    "category",
 ]
 
 TEXT_COLUMNS: List[str] = ["description", "features", "details"]
@@ -165,7 +166,7 @@ def _process_stage1_batch(
         stats.negative_price_removed += negative_price_removed
         df = df.loc[~negative_price_mask].copy()
 
-    low_price_mask = df["price"].notna() & (df["price"] < 5)
+    low_price_mask = df["price"].notna() & (df["price"] == 0)
     low_price_removed = int(low_price_mask.sum())
     if low_price_removed:
         stats.low_price_removed += low_price_removed
@@ -286,7 +287,18 @@ def preprocess_product_data(input_path: str, output_path: str) -> pd.DataFrame:
                     stats.price_fallback_count += 1
                 stats.prices_imputed += 1
 
-            final_record = {col: record.get(col) for col in FINAL_COLUMNS}
+            # RENAME FIELDS FOR FINAL OUPUT
+            final_record = {
+                "product_id": record.get("parent_asin"),
+                "product_name": record.get("title"),
+                "price": record.get("price"),
+                "average_rating": record.get("average_rating"),
+                "rating_number": record.get("rating_number"),
+                "description": record.get("description"),
+                "features": record.get("features"),
+                "details": record.get("details"),
+                "category": record.get("categories"),
+            }
             out.write(json.dumps(final_record, ensure_ascii=True) + "\n")
             stats.final_row_count += 1
             if len(final_samples) < 5:
@@ -313,7 +325,7 @@ def preprocess_product_data(input_path: str, output_path: str) -> pd.DataFrame:
     LOGGER.info("Rows removed (missing/empty parent_asin): %d", stats.removed_missing_parent_asin)
     LOGGER.info("Duplicates removed (by parent_asin): %d", stats.duplicates_removed)
     LOGGER.info("Rows removed (price < 0): %d", stats.negative_price_removed)
-    LOGGER.info("Rows removed (price < $5): %d", stats.low_price_removed)
+    LOGGER.info("Rows removed (price == 0): %d", stats.low_price_removed)
     LOGGER.info("Prices imputed (missing -> estimated): %d", stats.prices_imputed)
     LOGGER.info("Price imputation fallback to global median: %d", stats.price_fallback_count)
     LOGGER.info("Final row count: %d", stats.final_row_count)

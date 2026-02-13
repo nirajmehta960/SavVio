@@ -63,7 +63,7 @@ Pipeline for **3 datasets** using a **hybrid storage approach**:
 **Missing Value Handling (Product/Review):**
 | Field | Issue | Action |
 |-------|-------|--------|
-| `price` | 43% nulls | **AI-based imputation** (LLM analyzes dataset price patterns) |
+| `price` | 43% nulls | **Statistical Imputation** (Group Median based on title keywords) |
 | `bought_together` | 100% nulls | **Drop field** (no data available) |
 | `description` | Empty `[]` | → empty string for embedding |
 | `features` | Missing | Default `[]` → empty string |

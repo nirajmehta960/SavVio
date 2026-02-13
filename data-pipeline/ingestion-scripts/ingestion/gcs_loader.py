@@ -51,32 +51,19 @@ class GCSLoader:
             logger.error(f"Failed to initialize GCS client: {e}")
             raise
     
-    @staticmethod
-    def _calculate_md5(file_path: str) -> str:
-        """Calculate the MD5 checksum of a local file."""
-        import hashlib
-        import base64
-        hash_md5 = hashlib.md5()
-        with open(file_path, "rb") as f:
-            for chunk in iter(lambda: f.read(4096), b""):
-                hash_md5.update(chunk)
-        return base64.b64encode(hash_md5.digest()).decode('utf-8')
-
     def download_blob(
         self, 
         bucket_name: str, 
         blob_name: str, 
-        destination_path: str,
-        check_md5: bool = True
+        destination_path: str
     ) -> str:
         """
-        Download a single blob from GCS bucket with optional MD5 check.
+        Download a single blob from GCS bucket.
         
         Args:
             bucket_name: Name of the GCS bucket
             blob_name: Path to the file in the bucket (e.g., 'raw/financial.csv')
             destination_path: Local path where file should be saved
-            check_md5: If True, skip download if local file exists and matches remote MD5
             
         Returns:
             str: Path to the downloaded file
@@ -93,7 +80,7 @@ class GCSLoader:
             bucket = self.client.bucket(bucket_name)
             blob = bucket.blob(blob_name)
             
-            # Check if blob exists (this fetches metadata including MD5)
+            # Check if blob exists
             if not blob.exists():
                 raise FileNotFoundError(
                     f"Blob '{blob_name}' not found in bucket '{bucket_name}'"
@@ -108,10 +95,10 @@ class GCSLoader:
                 local_md5 = self._calculate_md5(destination_path)
                 
                 if remote_md5 == local_md5:
-                    logger.info(f"✓ Skipped download: {destination_path} (Up to date)")
+                    logger.info(f"Skipped download: {destination_path} (Up to date)")
                     return destination_path
                 else:
-                    logger.info(f"⚡ File changed. Downloading update for {destination_path}")
+                    logger.info(f"File changed. Downloading update for {destination_path}")
             
             # Download the blob
             logger.info(f"Downloading gs://{bucket_name}/{blob_name} to {destination_path}")
@@ -215,7 +202,6 @@ class GCSLoader:
             logger.error(f"Failed to load CSV from GCS: {e}")
             raise
     
-
     def load_json_from_gcs(
         self,
         bucket_name: str,
@@ -223,40 +209,26 @@ class GCSLoader:
         destination_path: str
     ) -> Union[Dict[str, Any], pd.DataFrame]:
         """
-        Download JSON or JSONL from GCS and load into Python dict or DataFrame.
+        Download JSON from GCS and load into Python dict or DataFrame.
         
         Args:
             bucket_name: Name of the GCS bucket
-            blob_name: Path to the JSON/JSONL file in the bucket
+            blob_name: Path to the JSON file in the bucket
             destination_path: Local path where file should be saved
             
         Returns:
-            Dict or pd.DataFrame: Loaded data
+            Dict or pd.DataFrame: Loaded data (DataFrame if JSON is list of records)
         """
         try:
             # Download the file
             local_path = self.download_blob(bucket_name, blob_name, destination_path)
             
-            is_jsonl = str(local_path).endswith(('.jsonl', '.ndjson'))
-            
             # Load JSON
-            logger.info(f"Loading JSON from {local_path} (Format: {'JSONL/NDJSON' if is_jsonl else 'JSON'})")
+            logger.info(f"Loading JSON from {local_path}")
+            with open(local_path, 'r') as f:
+                data = json.load(f)
             
-            if is_jsonl:
-                # Direct NDJSON loading
-                with open(local_path, 'r') as f:
-                    data = [json.loads(line) for line in f if line.strip()]
-            else:
-                # Standard JSON loading with fallback
-                with open(local_path, 'r') as f:
-                    try:
-                        data = json.load(f)
-                    except json.JSONDecodeError:
-                        logger.warning("Standard JSON load failed. Attempting to load as NDJSON...")
-                        f.seek(0)
-                        data = [json.loads(line) for line in f if line.strip()]
-            
-            # If it's a list (from standard JSON list or NDJSON), convert to DataFrame
+            # If it's a list of records, convert to DataFrame
             if isinstance(data, list):
                 df = pd.DataFrame(data)
                 logger.info(f"Loaded {len(df)} records and {len(df.columns)} columns")
@@ -386,16 +358,16 @@ def load_financial_data(
 def load_product_data(
     bucket_name: str,
     blob_name: str,
-    destination_path: str = "data/raw/product_data.jsonl",
+    destination_path: str = "data/raw/product_data.json",
     credentials_path: Optional[str] = None,
     project_id: Optional[str] = None
 ) -> pd.DataFrame:
     """
-    Load product data (JSONL) from GCS bucket.
+    Load product data (JSON) from GCS bucket.
     
     Args:
         bucket_name: GCS bucket name
-        blob_name: Path to product data JSONL in bucket
+        blob_name: Path to product data JSON in bucket
         destination_path: Local destination path
         credentials_path: Optional path to service account credentials
         project_id: Optional GCP project ID
@@ -404,7 +376,7 @@ def load_product_data(
         pd.DataFrame: Product data
     """
     logger.info("=" * 60)
-    logger.info("Loading Product Data from GCS (JSONL)")
+    logger.info("Loading Product Data from GCS (JSON)")
     logger.info("=" * 60)
     
     loader = GCSLoader(credentials_path, project_id)
@@ -421,16 +393,16 @@ def load_product_data(
 def load_review_data(
     bucket_name: str,
     blob_name: str,
-    destination_path: str = "data/raw/review_data.jsonl",
+    destination_path: str = "data/raw/review_data.json",
     credentials_path: Optional[str] = None,
     project_id: Optional[str] = None
 ) -> pd.DataFrame:
     """
-    Load product review data (JSONL) from GCS bucket.
+    Load product review data (JSON) from GCS bucket.
     
     Args:
         bucket_name: GCS bucket name
-        blob_name: Path to review data JSONL in bucket
+        blob_name: Path to review data JSON in bucket
         destination_path: Local destination path
         credentials_path: Optional path to service account credentials
         project_id: Optional GCP project ID
@@ -439,7 +411,7 @@ def load_review_data(
         pd.DataFrame: Review data
     """
     logger.info("=" * 60)
-    logger.info("Loading Product Review Data from GCS (JSONL)")
+    logger.info("Loading Product Review Data from GCS (JSON)")
     logger.info("=" * 60)
     
     loader = GCSLoader(credentials_path, project_id)

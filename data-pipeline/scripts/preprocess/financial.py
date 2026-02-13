@@ -18,13 +18,13 @@ OUTPUT_FILENAME = "financial_preprocessed.csv"
 
 KEEP_COLUMNS: List[str] = [
     "user_id",
-    "monthly_income_usd",
-    "monthly_expenses_usd",
-    "savings_usd",
+    "monthly_income",
+    "monthly_expenses",
+    "savings_balance",
     "has_loan",
-    "loan_amount_usd",
-    "monthly_emi_usd",
-    "loan_interest_rate_pct",
+    "loan_amount",
+    "monthly_loan_payment",
+    "loan_interest_rate",
     "loan_term_months",
     "credit_score",
     "employment_status",
@@ -43,22 +43,22 @@ DEMOGRAPHIC_COLUMNS_DROPPED = [
 ]
 
 MONETARY_FLOAT_COLUMNS: List[str] = [
-    "monthly_income_usd",
-    "monthly_expenses_usd",
-    "savings_usd",
-    "loan_amount_usd",
-    "monthly_emi_usd",
-    "loan_interest_rate_pct",
+    "monthly_income",
+    "monthly_expenses",
+    "savings_balance",
+    "loan_amount",
+    "monthly_emi",
+    "loan_interest_rate",
 ]
 
 CRITICAL_REQUIRED_COLUMNS: List[str] = [
-    "monthly_income_usd",
-    "monthly_expenses_usd",
-    "savings_usd",
+    "monthly_income",
+    "monthly_expenses",
+    "savings_balance",
     "credit_score",
 ]
 
-LOAN_NUMERIC_COLUMNS: List[str] = ["loan_amount_usd", "monthly_emi_usd", "loan_interest_rate_pct"]
+LOAN_NUMERIC_COLUMNS: List[str] = ["loan_amount", "monthly_emi", "loan_interest_rate"]
 
 
 def _validate_required_columns(df: pd.DataFrame, required_columns: List[str]) -> None:
@@ -96,14 +96,26 @@ def preprocess_financial_data(input_path: str, output_path: str) -> pd.DataFrame
     """Run deterministic preprocessing and save processed financial data."""
     LOGGER.info("Loading dataset from: %s", input_path)
     df = pd.read_csv(input_path)
-    _validate_required_columns(df, KEEP_COLUMNS)
+    # Define original columns expected in raw CSV
+    RAW_EXPECTED_COLUMNS = [
+        "user_id", "monthly_income_usd", "monthly_expenses_usd", "savings_usd",
+        "has_loan", "loan_amount_usd", "monthly_emi_usd", "loan_interest_rate_pct",
+        "loan_term_months", "credit_score", "employment_status", "region"
+    ]
+    _validate_required_columns(df, RAW_EXPECTED_COLUMNS)
 
     rows_loaded = len(df)
     LOGGER.info("Rows loaded: %d", rows_loaded)
     _print_frame_snapshot(df, title="Loaded Dataset")
 
     # Keep only explicitly approved fields for affordability logic.
-    df = df.loc[:, KEEP_COLUMNS].copy()
+    # Note: Using original names here before renaming
+    original_keep_cols = [
+        "user_id", "monthly_income_usd", "monthly_expenses_usd", "savings_usd",
+        "has_loan", "loan_amount_usd", "monthly_emi_usd", "loan_interest_rate_pct",
+        "loan_term_months", "credit_score", "employment_status", "region"
+    ]
+    df = df.loc[:, original_keep_cols].copy()
     LOGGER.info(
         "Dropped non-required columns including demographics (%s).",
         ", ".join(DEMOGRAPHIC_COLUMNS_DROPPED),
@@ -111,6 +123,17 @@ def preprocess_financial_data(input_path: str, output_path: str) -> pd.DataFrame
     LOGGER.info(
         "Demographic fields are removed to reduce bias risk and keep decisions based on financial behavior only."
     )
+
+    # Contextual renaming map
+    rename_map = {
+        "monthly_income_usd": "monthly_income",
+        "monthly_expenses_usd": "monthly_expenses",
+        "savings_usd": "savings_balance",
+        "loan_amount_usd": "loan_amount",
+        "monthly_emi_usd": "monthly_emi",
+        "loan_interest_rate_pct": "loan_interest_rate",
+    }
+    df.rename(columns=rename_map, inplace=True)
 
     # Enforce numeric types deterministically; invalid parsing becomes NaN for explicit handling later.
     for col in MONETARY_FLOAT_COLUMNS:
@@ -145,9 +168,9 @@ def preprocess_financial_data(input_path: str, output_path: str) -> pd.DataFrame
 
     # Apply range validation rules one by one and log removals per rule.
     rules: Dict[str, Callable[[pd.DataFrame], pd.Series]] = {
-        "monthly_income_usd < 0": lambda frame: frame["monthly_income_usd"] < 0,
-        "monthly_expenses_usd < 0": lambda frame: frame["monthly_expenses_usd"] < 0,
-        "savings_usd < 0": lambda frame: frame["savings_usd"] < 0,
+        "monthly_income < 0": lambda frame: frame["monthly_income"] < 0,
+        "monthly_expenses < 0": lambda frame: frame["monthly_expenses"] < 0,
+        "savings_balance < 0": lambda frame: frame["savings_balance"] < 0,
         "credit_score not in [300, 850]": lambda frame: ~frame["credit_score"].between(300, 850, inclusive="both"),
     }
 
