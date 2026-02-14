@@ -19,12 +19,20 @@ from sqlalchemy import text
 
 from db_config import get_engine, ensure_pgvector
 from models import create_tables
+# free. No API keys, no billing, no rate limits
+from sentence_transformers import SentenceTransformer
+
 
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
+'''
+If retrieval quality is lacking, swap EMBEDDING_MODEL to "all-mpnet-base-v2" (768-dim) 
+for better semantic understanding at the cost of larger storage and slightly slower embedding time. 
+(just change the model name string) or an API-based option without changing the rest of the pipeline.
+'''
 
 EMBEDDING_MODEL = "all-MiniLM-L6-v2"
 EMBEDDING_DIM = 384
@@ -37,7 +45,7 @@ BATCH_SIZE = 64
 
 def load_model():
     """Load the sentence-transformer model once."""
-    from sentence_transformers import SentenceTransformer
+    # from sentence_transformers import SentenceTransformer
     logger.info("Loading embedding model: %s", EMBEDDING_MODEL)
     return SentenceTransformer(EMBEDDING_MODEL)
 
@@ -114,6 +122,20 @@ def generate_embeddings(texts: list[str], model) -> np.ndarray:
 # ---------------------------------------------------------------------------
 # Table creation
 # ---------------------------------------------------------------------------
+'''
+Separate table:
+
+Embeddings are large (384 floats per row) — keeping them separate means queries 
+on the products table that don't need embeddings stay fast.
+You can rebuild/reindex embeddings without touching the main table.
+You can have multiple embedding versions (swap models, compare results).
+pgvector indexing (IVFFlat, HNSW) works on a dedicated table without bloating the main table's index.
+
+For SavVio, the separate table is better because we likely iterate on embedding models, 
+and we don't want to ALTER the products table every time. 
+It's also the standard pattern for RAG systems. 
+For a small academic project, either works — it's a design preference, not a hard requirement.
+'''
 
 def _ensure_embedding_tables(engine):
     """Create product_embeddings and review_embeddings tables."""
@@ -145,6 +167,13 @@ def _ensure_embedding_tables(engine):
 # Storage
 # ---------------------------------------------------------------------------
 
+'''
+To join back to the full review text, do 
+JOIN reviews ON 
+    review_embeddings.product_id = reviews.product_id 
+    AND review_embeddings.user_id = reviews.user_id
+'''
+
 def store_product_embeddings(engine, product_ids: list[str], embeddings: np.ndarray):
     """Upsert product embeddings into product_embeddings table."""
     logger.info("Storing %d product embeddings", len(product_ids))
@@ -159,19 +188,19 @@ def store_product_embeddings(engine, product_ids: list[str], embeddings: np.ndar
     logger.info("Product embeddings stored")
 
 
-def store_review_embeddings(engine, review_ids: list[int], product_ids: list[str], embeddings: np.ndarray):
+def store_review_embeddings(engine, product_ids: list[str], user_ids: list[str], embeddings: np.ndarray):
     """Upsert review embeddings into review_embeddings table."""
-    logger.info("Storing %d review embeddings", len(review_ids))
+    logger.info("Storing %d review embeddings", len(product_ids))
     sql = text("""
-        INSERT INTO review_embeddings (review_id, product_id, embedding)
-        VALUES (:rid, :pid, :emb::vector)
-        ON CONFLICT (review_id) DO UPDATE SET embedding = EXCLUDED.embedding
+        INSERT INTO review_embeddings (product_id, user_id, embedding)
+        VALUES (:pid, :uid, :emb::vector)
+        ON CONFLICT (product_id, user_id) DO UPDATE SET embedding = EXCLUDED.embedding
     """)
     with engine.begin() as conn:
-        for rid, pid, emb in zip(review_ids, product_ids, embeddings):
+        for pid, uid, emb in zip(product_ids, user_ids, embeddings):
             conn.execute(sql, {
-                "rid": int(rid),
                 "pid": str(pid),
+                "uid": str(uid),
                 "emb": str(emb.tolist()),
             })
     logger.info("Review embeddings stored")
@@ -207,7 +236,7 @@ def embed_reviews(engine, reviews_path: str, model):
     df = _read_file(reviews_path)
     logger.info("Loaded %d reviews from %s", len(df), reviews_path)
 
-    for col in ["product_id", "rating"]:
+    for col in ["product_id", "user_id"]:
         if col not in df.columns:
             raise ValueError(f"Reviews file must contain a '{col}' column")
 
@@ -221,50 +250,9 @@ def embed_reviews(engine, reviews_path: str, model):
         logger.warning("No reviews with text found — skipping review embeddings")
         return 0
 
-    # We need the reviews table `id` (primary key) as foreign key.
-    # Fetch id mapping from DB based on unique identifiers.
-    review_ids = _get_review_ids(engine, df)
-    if review_ids is None:
-        logger.warning("Could not map reviews to DB ids — skipping")
-        return 0
-
     embeddings = generate_embeddings(df["_embed_text"].tolist(), model)
-    store_review_embeddings(engine, review_ids, df["product_id"].tolist(), embeddings)
+    store_review_embeddings(engine, df["product_id"].tolist(), df["user_id"].tolist(), embeddings)
     return len(df)
-
-
-def _get_review_ids(engine, df: pd.DataFrame) -> list[int] | None:
-    """
-    Fetch the auto-generated review `id` from the reviews table.
-    Matches on (user_id, product_id, rating) as a composite key.
-    Returns list of DB ids in same order as df, or None on failure.
-    """
-    ids = []
-    sql = text("""
-        SELECT id FROM reviews
-        WHERE user_id = :uid AND product_id = :pid AND rating = :rating
-        LIMIT 1
-    """)
-    with engine.connect() as conn:
-        for _, row in df.iterrows():
-            result = conn.execute(sql, {
-                "uid": str(row.get("user_id", "")),
-                "pid": str(row["product_id"]),
-                "rating": float(row["rating"]),
-            })
-            db_row = result.fetchone()
-            if db_row:
-                ids.append(db_row[0])
-            else:
-                ids.append(None)
-
-    # Drop any that couldn't be matched
-    matched = sum(1 for i in ids if i is not None)
-    logger.info("Matched %d / %d reviews to DB ids", matched, len(ids))
-
-    if matched == 0:
-        return None
-    return ids
 
 
 # ---------------------------------------------------------------------------
