@@ -25,6 +25,12 @@ logger = logging.getLogger(__name__)
 # Adjust keys if your file headers differ.
 # ---------------------------------------------------------------------------
 
+'''
+Column mapping is quite important because it's your safety net — it ensures only the columns you expect end up in the database,
+and it handles any naming mismatches between your JSONL field names and your DB column names. 
+Without it, you risk pushing extra/unexpected columns into to_sql() which would throw errors.
+'''
+
 FINANCIAL_COLS = {
     "user_id": "user_id",
     "monthly_income": "monthly_income",
@@ -239,7 +245,7 @@ def load_all(
 
 
 # ---------------------------------------------------------------------------
-# CLI
+# CLI - optional, for direct execution
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
