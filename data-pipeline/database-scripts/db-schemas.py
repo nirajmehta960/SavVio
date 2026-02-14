@@ -5,7 +5,7 @@ Matches the actual columns from preprocessing (see Data Pipeline Plan).
 
 from sqlalchemy import (
     Column, Integer, Float, String, Boolean, Text, DateTime, ForeignKey,
-    func,
+    func, JSON
 )
 from sqlalchemy.orm import declarative_base
 
@@ -56,7 +56,7 @@ class Product(Base):
     rating_number   = Column(Integer)
     description     = Column(Text)
     features        = Column(Text)
-    details         = Column(Text)
+    details         = Column(JSON)        # stored as JSONB in PostgreSQL
     category        = Column(String(200))
     created_at      = Column(DateTime, server_default=func.now())
 

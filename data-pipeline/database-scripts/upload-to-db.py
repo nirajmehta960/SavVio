@@ -2,9 +2,9 @@
 Upload finalized (feature-engineered) data to PostgreSQL.
 
 Loads three datasets into their respective tables:
-  - financial_processed.csv   (CSV)   → financial_profiles
-  - products_processed.jsonl  (JSONL) → products
-  - reviews_processed.jsonl   (JSONL) → reviews
+    - financial_featured.csv   (CSV)   → financial_profiles
+    - products_featured.jsonl  (JSONL) → products
+    - reviews_featured.jsonl   (JSONL) → reviews
 
 Products must be loaded before reviews (FK dependency).
 """
@@ -253,10 +253,10 @@ if __name__ == "__main__":
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
-    parser = argparse.ArgumentParser(description="Upload processed data to PostgreSQL")
-    parser.add_argument("--financial", required=True, help="Path to financial CSV")
-    parser.add_argument("--products", required=True, help="Path to products JSONL")
-    parser.add_argument("--reviews", required=True, help="Path to reviews JSONL")
+    parser = argparse.ArgumentParser(description="Upload featured data to PostgreSQL")
+    parser.add_argument("--financial", required=True, help="Path to financial CSV (e.g., data/featured/financial_featured.csv)")
+    parser.add_argument("--products", required=True, help="Path to products JSONL (e.g., data/featured/products_featured.jsonl)")
+    parser.add_argument("--reviews", required=True, help="Path to reviews JSONL (e.g., data/featured/reviews_featured.jsonl)")
     parser.add_argument("--env", default="dev", choices=["dev", "prod"])
     parser.add_argument("--no-truncate", action="store_true", help="Append instead of replace")
     args = parser.parse_args()
