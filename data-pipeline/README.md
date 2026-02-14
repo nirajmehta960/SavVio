@@ -280,7 +280,7 @@ Identify, understand, and document the data sources needed for SavVio's purchase
    | Attribute | Details |
    |-----------|---------|
    | Source | Product dataset |
-   | Format | CSV |
+   | Format | JSONL |
    | Size | ~X records (to be confirmed) |
    | Update Frequency | Static (for academic project) |
 
@@ -288,7 +288,7 @@ Identify, understand, and document the data sources needed for SavVio's purchase
    | Attribute | Details |
    |-----------|---------|
    | Source | Product review dataset |
-   | Format | CSV |
+   | Format | JSONL |
    | Size | ~X records (to be confirmed) |
    | Update Frequency | Static or event-driven |
 
@@ -382,18 +382,18 @@ Download data from external sources and load it into the pipeline system in a co
 
 4. **Implement product data ingestion** (`ingest/product.py`)
    - `download_product_data()` — Fetches from source
-   - `load_product_data()` — Reads CSV into DataFrame
+   - `load_product_data()` — Reads JSONL into DataFrame
    - `save_raw_product_data()` — Saves to `data/raw/`
 
 5. **Implement review data ingestion** (`ingest/review.py`)
    - `download_review_data()` — Fetches from source
-   - `load_review_data()` — Reads CSV into DataFrame
+   - `load_review_data()` — Reads JSONL into DataFrame
    - `save_raw_review_data()` — Saves to `data/raw/`
 
 6. **Store raw data in original format**
    - Save to `data/raw/financial.csv`
-   - Save to `data/raw/products.csv`
-   - Save to `data/raw/reviews.csv`
+   - Save to `data/raw/products.jsonl`
+   - Save to `data/raw/reviews.jsonl`
 
 7. **Log ingestion metadata**
    - Timestamp, record counts, checksums, errors
@@ -441,8 +441,8 @@ Version control the raw ingested data to ensure reproducibility and enable rollb
 1. **Add raw data to DVC tracking**
    ```bash
    dvc add data/raw/financial.csv
-   dvc add data/raw/products.csv
-   dvc add data/raw/reviews.csv
+   dvc add data/raw/products.jsonl
+   dvc add data/raw/reviews.jsonl
    ```
 
 2. **Commit .dvc files to Git**
@@ -676,11 +676,13 @@ Clean, transform, and standardize validated data into a consistent format ready 
    - Remove duplicates
    
    **Product Data:**
+   - Flatten nested JSONL objects if present
    - Remove duplicates
    - Standardize price format
    - Clean product names
    
    **Review Data:**
+   - Flatten nested JSONL objects if present
    - Remove duplicate reviews
    - Clean text (trim whitespace, handle special chars)
    - Validate ratings are in 1-5 range
@@ -1291,6 +1293,7 @@ Identify and resolve bottlenecks to optimize performance.
    | Bottleneck | Solution |
    |------------|----------|
    | Data download | Cache, retry logic |
+   | JSONL parsing & flattening | Use Polars, batch processing |
    | Large file processing | Chunking, Polars |
    | Review aggregation | Batch processing |
    | Embedding generation | Batch processing |
