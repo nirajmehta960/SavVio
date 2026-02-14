@@ -1,0 +1,42 @@
+{
+  "dataset": "review_preprocessed",
+  "file_type": "jsonl",
+  "columns": {
+    "review_id": {
+      "type": "integer",
+      "nullable": false
+    },
+    "user_id": {
+      "type": "string",
+      "nullable": false
+    },
+    "asin": {
+      "type": "string",
+      "nullable": false
+    },
+    "parent_asin": {
+      "type": "string",
+      "nullable": true
+    },
+    "rating": {
+      "type": "float",
+      "nullable": false
+    },
+    "title": {
+      "type": "string",
+      "nullable": true
+    },
+    "text": {
+      "type": "string",
+      "nullable": true
+    },
+    "verified_purchase": {
+      "type": "boolean",
+      "nullable": true
+    },
+    "helpful_vote": {
+      "type": "integer",
+      "nullable": true
+    }
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "dataset": "product_preprocessed",
+  "file_type": "jsonl",
+  "columns": {
+    "asin": {
+      "type": "string",
+      "nullable": false
+    },
+    "title": {
+      "type": "string",
+      "nullable": true
+    },
+    "category": {
+      "type": "string",
+      "nullable": true
+    },
+    "price": {
+      "type": "float",
+      "nullable": true
+    },
+    "brand": {
+      "type": "string",
+      "nullable": true
+    }
+  }
+}

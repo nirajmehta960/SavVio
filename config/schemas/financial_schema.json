@@ -1,0 +1,30 @@
+{
+  "dataset": "financial_preprocessed",
+  "file_type": "csv",
+  "columns": {
+    "user_id": {
+      "type": "string",
+      "nullable": false
+    },
+    "income": {
+      "type": "float",
+      "nullable": true
+    },
+    "monthly_expense": {
+      "type": "float",
+      "nullable": true
+    },
+    "savings": {
+      "type": "float",
+      "nullable": true
+    },
+    "debt": {
+      "type": "float",
+      "nullable": true
+    },
+    "credit_score": {
+      "type": "integer",
+      "nullable": true
+    }
+  }
+}
