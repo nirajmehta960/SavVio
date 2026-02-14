@@ -5,8 +5,6 @@
 **Project:** SavVio - AI-Driven Financial Advocacy Tool  
 **Team Members:** Murtaza Nipplewala, Niraj Mehta, Wen-Hsin Su, Pranathi Bombay, Rishabh Joshi, Sanjana Patnam
 
-> 📋 **Detailed Implementation Plan:** [implementation_plan.md](./implementation_plan.md) - Hybrid JSONB approach with vector embeddings
-
 ---
 
 ## Pipeline Execution Order
@@ -145,8 +143,8 @@ Establish the foundational project structure, dependencies, and development envi
    │   ├── data/
    │   │   ├── raw/           # Raw financial, product, & review data
    │   │   │   ├── financial.csv
-   │   │   │   ├── products.csv
-   │   │   │   ├── reviews.csv
+   │   │   │   ├── products.jsonl
+   │   │   │   ├── reviews.jsonl
    │   │   │   └── .gitignore
    │   │   ├── processed/     # Cleaned & transformed data
    │   │   │   ├── financial_processed.csv
@@ -657,57 +655,101 @@ Detect data anomalies (outliers, suspicious patterns) and trigger alerts when is
 ### Objective
 Clean, transform, and standardize validated data into a consistent format ready for feature engineering.
 
-> 📋 **See detailed implementation plan:** [implementation_plan.md](./implementation_plan.md)
+### Steps
 
-### Storage Strategy (Hybrid Approach)
+1. **Create modular preprocessing package**
+   ```
+   scripts/preprocess/
+   ├── __init__.py
+   ├── financial.py
+   ├── product.py
+   ├── review.py
+   ├── utils.py
+   └── run_preprocessing.py
+   ```
 
-| Dataset | Format | Storage | Rationale |
-|---------|--------|---------|-----------|
-| `financial_data.csv` | CSV | Traditional columns | Structured, fixed schema |
-| `product_data.jsonl` | JSONL | **JSONB** + vector columns | Flexible schema, direct ingestion |
-| `review_data.jsonl` | JSONL | **JSONB** + vector columns | Flexible schema, direct ingestion |
+2. **Data cleaning**
+
+   **Financial Data:**
+   - Handle missing values (impute median or flag)
+   - Standardize transaction categories
+   - Remove duplicates
+   
+   **Product Data:**
+   - Remove duplicates
+   - Standardize price format
+   - Clean product names
+   
+   **Review Data:**
+   - Remove duplicate reviews
+   - Clean text (trim whitespace, handle special chars)
+   - Validate ratings are in 1-5 range
+   - Handle missing helpful_count
+
+3. **Data transformation**
+
+   **Financial Data:**
+   - Convert to monthly format (annual ÷ 12, weekly × 4.33)
+   - Categorize expenses
+   - Calculate total fixed expenses
+   
+   **Product Data:**
+   - Standardize category names
+   - Clean descriptions for embedding
+   
+   **Review Data:**
+   - Normalize text for processing
+   - Aggregate ratings by product
+
+4. **Save processed data**
+   - `data/processed/financial_processed.csv`
+   - `data/processed/products_processed.csv`
+   - `data/processed/reviews_processed.csv`
+
+### Tools & Alternatives
+
+| Tool | Purpose | Alternative | When to Use Alternative |
+|------|---------|-------------|------------------------|
+| Pandas | Data manipulation | Polars | 10-100x faster for large data |
+| NumPy | Numerical operations | — | — |
+
+---
+
+## Phase 9: Processed Data Validation
+
+### Objective
+Validate that preprocessing transformations didn't break the data or introduce errors.
 
 ### Steps
 
-1. **Financial Data (CSV) - Traditional Processing**
-   - Handle missing values (impute median for optional fields, flag for required)
-   - Type conversion (floats, integers, dates)
-   - Validate ranges (income >= 0, credit score 300-850)
-   - Remove exact duplicate records
-
-2. **Product/Review Data (JSONL) - JSONB Storage**
-   
-   **No flattening required** - store entire JSON as JSONB in PostgreSQL.
-   
-   **Missing Value Handling at Embedding Extraction:**
-   | Field | Issue | Action |
-   |-------|-------|--------|
-   | `price` | Many nulls | Keep null (handle at query time) |
-   | `description` | Empty `[]` | → empty string for embedding |
-   | `features` | Missing | Default `[]` → empty string |
-   | `details` | Missing keys | Extract available keys only |
-   | `title`/`text` | Empty | → empty string for embedding |
-
-3. **Output Locations**
-   - Financial: `data/processed/financial_processed.csv`
-   - Product: Direct to PostgreSQL as JSONB
-   - Review: Direct to PostgreSQL as JSONB
+1. **Define processed data expectations**
+   - All original records accounted for (minus quarantined)
+   - No new null values introduced
+   - Transformations applied correctly (e.g., monthly format)
+   - No duplicate records
 
 2. **Run validation checkpoint**
    - Validate `data/processed/` files
    - Compare record counts: raw vs processed
    - Verify transformation logic
 
-| Tool | Purpose |
-|------|---------|
-| Pandas | Financial CSV manipulation |
-| PostgreSQL JSONB | Native JSON storage for product/review |
-| psycopg2/SQLAlchemy | Database connection |
+3. **Specific checks for SavVio**
+   - Financial values in monthly format
+   - Expense categories standardized
+   - Product prices positive and reasonable
+   - Review ratings normalized and valid
 
-### SavVio-Specific Considerations
-- Hybrid approach: Structured columns for financial, JSONB for product/review
-- No preprocessing needed for JSONL files (direct to DB)
-- Missing values handled at embedding generation time
+4. **Handle failures**
+   - Log transformation errors
+   - Alert if significant data loss
+   - Option to rollback to raw data
+
+### Tools & Alternatives
+
+| Tool | Purpose | Alternative |
+|------|---------|-------------|
+| Great Expectations | Validation | Pandera |
+| Custom Python | Transformation checks | — |
 
 ---
 
