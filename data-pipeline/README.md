@@ -810,11 +810,11 @@ Create meaningful features that maximize predictive signal for SavVio's decision
 
    | Feature | Formula | Purpose |
    |---------|---------|---------|
-   | `discretionary_income` | income - fixed_expenses | Available money |
-   | `debt_to_income_ratio` | debt / income | Burden indicator |
+   | `discretionary_income` | income - (expenses + emi) | Available money |
+   | `debt_to_income_ratio` | emi / income | Burden indicator |
    | `savings_rate` | savings / income | Health indicator |
-   | `expense_burden_ratio` | expenses / income | Spending pattern |
-   | `emergency_fund_months` | savings / monthly_expenses | Safety buffer |
+   | `monthly_expense_burden_ratio` | (expenses + emi) / income | Spending pattern |
+   | `financial_runway` | savings / (expenses + emi) | Safety buffer |
 
 3. **Affordability features**
 
@@ -822,24 +822,23 @@ Create meaningful features that maximize predictive signal for SavVio's decision
    |---------|---------|---------|
    | `price_to_income_ratio` | price / income | Relative cost |
    | `affordability_score` | discretionary - price | Can afford? |
-   | `residual_utility_score` | (savings - price) / expenses | Emergency fund impact |
+   | `residual_utility_score` | (savings - price) / (expenses + emi) | Emergency fund impact |
 
 4. **Review-based features**
 
    | Feature | Formula | Purpose |
    |---------|---------|---------|
-   | `avg_product_rating` | mean(rating) per product | Product quality signal |
-   | `num_reviews` | count of reviews per product | Review volume/popularity |
+   | `review_length` | char_count(review_text) | Detail-depth signal |
    | `rating_variance` | std(rating) per product | Rating consistency |
-   | `has_text_reviews` | 1 if text reviews exist, 0 else | Detailed feedback indicator |
 
 5. **Handle edge cases**
    - Zero income: flag, don't compute ratios
    - Division by zero: safe division with defaults
    - Missing review data: fill with defaults
 
-6. **Save features**
-   - `data/validated/features.csv`
+   - `data/features/features.csv`
+      - **Description:** This is the master consolidated dataset containing all engineered features (affordability metrics, review signals, and financial ratios) linked to user-product interactions.
+      - **Purpose:** This file is the primary input for training the Purchase Guardrail model and will be deployed to the PostgreSQL database for serving.
    - `config/feature_definitions.json`
 
 ### Tools & Alternatives
@@ -904,12 +903,14 @@ Version control the final feature set for model reproducibility.
 
 1. **Add features to DVC**
    ```bash
-   dvc add data/validated/features.csv
+   dvc add data/features/features.csv
+   dvc add data/features/financial_featured.csv
+   dvc add data/features/reviews_featured.jsonl
    ```
 
 2. **Commit and push**
    ```bash
-   git add data/validated/*.dvc
+   git add data/features/*.dvc
    git commit -m "Add features v1.0"
    dvc push
    ```
@@ -944,7 +945,14 @@ Load processed data and feature embeddings into PostgreSQL (relational) and pgve
 
 ### Steps
 
-1. **Create database loading package**
+1. **Identify datasets to load**
+   We will load the following processed and featured datasets into the database:
+   - `data/features/financial_featured.csv`
+   - `data/features/reviews_featured.jsonl`
+   - `data/processed/product_preprocessed.jsonl`
+   - `data/features/features.csv`
+
+2. **Create database loading package**
    ```
    scripts/database/
    ├── __init__.py
