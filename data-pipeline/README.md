@@ -829,24 +829,12 @@ Create meaningful features within each data track — financial health features 
 
    > **Note:** `average_rating` and `rating_number` (equivalent to `num_reviews`) already exist in the product metadata. The only feature requiring individual review data is `rating_variance`, which measures how polarized opinions are about a product.
 
-4. **Affordability features** (computed at inference time, NOT in pipeline)
-
-   These metrics require both a specific user's financial profile and a specific product's price. They are computed on-demand by the Deterministic Financial Logic Engine when a user queries a product.
-
-   | Feature | Formula | Computed By |
-   |---------|---------|-------------|
-   | `price_to_income_ratio` | price / income | Decision API at query time |
-   | `affordability_score` | discretionary_income - price | Decision API at query time |
-   | `residual_utility_score` | (savings - price) / (expenses + emi) | Decision API at query time |
-
-   The `affordability_features.py` module is a stateless utility used by the Decision API (Phase 3: Model Development), not a pipeline script.
-
-5. **Handle edge cases**
+4. **Handle edge cases**
    - Zero income: ratios set to NaN (XGBoost handles natively)
    - Division by zero: safe handling with NaN defaults
    - Single-review products: rating_variance defaults to 0.0
 
-6. **Outputs**
+5. **Outputs**
    - `data/features/financial_featured.csv` — Financial profiles enriched with health metrics
    - `data/features/product_rating_variance.csv` — Product-level rating variance
    - `config/feature_definitions.json` — Feature metadata documentation
