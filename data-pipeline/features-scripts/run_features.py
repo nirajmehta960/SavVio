@@ -20,7 +20,6 @@ sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 
 from features.financial_features import run_financial_features
 from features.review_features import run_review_features
-from features.affordability_features import run_affordability_features
 from features.utils import setup_logging
 
 # Configure module logging.
@@ -69,20 +68,20 @@ def main():
         except Exception as e:
             logger.error(f"Review feature engineering failed: {e}")
 
-    # Step 3: Affordability features.
-    if not args.skip_affordability:
-        logger.info("--- Starting Affordability Feature Engineering ---")
-        # Affordability requires financial + review feature outputs and product input data.
+    # # Step 3: Affordability features - moved to Decision API/model pipeline for on-demand computation.
+    # if not args.skip_affordability:
+    #     logger.info("--- Starting Affordability Feature Engineering ---")
+    #     # Affordability requires financial + review feature outputs and product input data.
         
-        # Validate required upstream outputs exist.
-        if not (os.path.exists(REV_OUTPUT) and os.path.exists(FIN_OUTPUT)):
-            logger.warning("Skipping affordability features because previous outputs are missing. Run full pipeline.")
-        else:
-            try:
-                run_affordability_features(REV_OUTPUT, FIN_OUTPUT, PROD_INPUT, AFF_OUTPUT)
-                logger.info("Affordability features complete.")
-            except Exception as e:
-                logger.error(f"Affordability feature engineering failed: {e}")
+    #     # Validate required upstream outputs exist.
+    #     if not (os.path.exists(REV_OUTPUT) and os.path.exists(FIN_OUTPUT)):
+    #         logger.warning("Skipping affordability features because previous outputs are missing. Run full pipeline.")
+    #     else:
+    #         try:
+    #             run_affordability_features(REV_OUTPUT, FIN_OUTPUT, PROD_INPUT, AFF_OUTPUT)
+    #             logger.info("Affordability features complete.")
+    #         except Exception as e:
+    #             logger.error(f"Affordability feature engineering failed: {e}")
 
     logger.info("Feature engineering pipeline finished.")
 

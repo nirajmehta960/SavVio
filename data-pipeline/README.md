@@ -791,7 +791,7 @@ Version control the processed data to track transformations.
 ## Phase 11: Feature Engineering
 
 ### Objective
-Create meaningful features that maximize predictive signal for SavVio's decision engine.
+Create meaningful features within each data track — financial health features per user and quality features per product. Affordability metrics (which require both user and product data) are computed at inference time by the Deterministic Financial Logic Engine, not pre-computed in the pipeline.
 
 ### Steps
 
@@ -800,46 +800,56 @@ Create meaningful features that maximize predictive signal for SavVio's decision
    scripts/features/
    ├── __init__.py
    ├── financial_features.py
-   ├── affordability_features.py
    ├── review_features.py
    ├── utils.py
    └── run_features.py
    ```
 
-2. **Financial health features**
+2. **Financial health features** (`financial_features.py`)
+
+   Input: `data/processed/financial_preprocessed.csv`
+   Output: `data/features/financial_featured.csv`
 
    | Feature | Formula | Purpose |
    |---------|---------|---------|
-   | `discretionary_income` | income - (expenses + emi) | Available money |
-   | `debt_to_income_ratio` | emi / income | Burden indicator |
-   | `savings_rate` | savings / income | Health indicator |
+   | `discretionary_income` | income - (expenses + emi) | Available money after obligations |
+   | `debt_to_income_ratio` | emi / income | Debt burden indicator |
+   | `savings_to_income_ratio` | savings / income | Savings health indicator |
    | `monthly_expense_burden_ratio` | (expenses + emi) / income | Spending pattern |
-   | `financial_runway` | savings / (expenses + emi) | Safety buffer |
+   | `emergency_fund_months` | savings / (expenses + emi) | Safety buffer in months |
 
-3. **Affordability features**
+3. **Product quality features** (`review_features.py`)
 
-   | Feature | Formula | Purpose |
-   |---------|---------|---------|
-   | `price_to_income_ratio` | price / income | Relative cost |
-   | `affordability_score` | discretionary - price | Can afford? |
-   | `residual_utility_score` | (savings - price) / (expenses + emi) | Emergency fund impact |
-
-4. **Review-based features**
+   Input: `data/processed/review_preprocessed.jsonl`
+   Output: `data/features/product_rating_variance.csv` (one row per product)
 
    | Feature | Formula | Purpose |
    |---------|---------|---------|
-   | `review_length` | char_count(review_text) | Detail-depth signal |
-   | `rating_variance` | std(rating) per product | Rating consistency |
+   | `rating_variance` | std(rating) per product | Rating consensus signal |
+
+   > **Note:** `average_rating` and `rating_number` (equivalent to `num_reviews`) already exist in the product metadata. The only feature requiring individual review data is `rating_variance`, which measures how polarized opinions are about a product.
+
+4. **Affordability features** (computed at inference time, NOT in pipeline)
+
+   These metrics require both a specific user's financial profile and a specific product's price. They are computed on-demand by the Deterministic Financial Logic Engine when a user queries a product.
+
+   | Feature | Formula | Computed By |
+   |---------|---------|-------------|
+   | `price_to_income_ratio` | price / income | Decision API at query time |
+   | `affordability_score` | discretionary_income - price | Decision API at query time |
+   | `residual_utility_score` | (savings - price) / (expenses + emi) | Decision API at query time |
+
+   The `affordability_features.py` module is a stateless utility used by the Decision API (Phase 3: Model Development), not a pipeline script.
 
 5. **Handle edge cases**
-   - Zero income: flag, don't compute ratios
-   - Division by zero: safe division with defaults
-   - Missing review data: fill with defaults
+   - Zero income: ratios set to NaN (XGBoost handles natively)
+   - Division by zero: safe handling with NaN defaults
+   - Single-review products: rating_variance defaults to 0.0
 
-   - `data/features/features.csv`
-      - **Description:** This is the master consolidated dataset containing all engineered features (affordability metrics, review signals, and financial ratios) linked to user-product interactions.
-      - **Purpose:** This file is the primary input for training the Purchase Guardrail model and will be deployed to the PostgreSQL database for serving.
-   - `config/feature_definitions.json`
+6. **Outputs**
+   - `data/features/financial_featured.csv` — Financial profiles enriched with health metrics
+   - `data/features/product_rating_variance.csv` — Product-level rating variance
+   - `config/feature_definitions.json` — Feature metadata documentation
 
 ### Tools & Alternatives
 
@@ -847,7 +857,6 @@ Create meaningful features that maximize predictive signal for SavVio's decision
 |------|---------|-------------|------------------------|
 | Pandas | Feature creation | Polars | Large datasets |
 | NumPy | Numerical ops | — | — |
-| Scikit-learn | Encoding | Category Encoders | More encoding options |
 
 ---
 
@@ -860,26 +869,29 @@ Validate that engineered features are correctly calculated and within expected r
 
 1. **Define feature expectations**
 
+   **Financial Features:**
    | Feature | Expected Range | Validation |
    |---------|---------------|------------|
-   | `discretionary_income` | Can be negative | Check not NaN |
-   | `debt_to_income_ratio` | 0 to ~2 | Flag if > 2 |
-   | `savings_rate` | 0 to ~1 | Flag if > 1 |
-   | `affordability_score` | Any | Check not NaN/Inf |
-   | `residual_utility_score` | Any | Check not NaN/Inf |
-   | `avg_product_rating` | 1-5 | Check in range |
-   | `num_reviews` | >= 0 | Check not negative |
-   | `rating_variance` | >= 0 | Check not negative |
+   | `discretionary_income` | Can be negative | Check not NaN where income > 0 |
+   | `debt_to_income_ratio` | 0 to ~2 | Flag if > 2; NaN only when income = 0 |
+   | `savings_to_income_ratio` | 0 to ~1 | Flag if > 1; NaN only when income = 0 |
+   | `monthly_expense_burden_ratio` | 0 to ~1 | Flag if > 1 |
+   | `emergency_fund_months` | >= 0 | NaN only when obligations = 0 |
+
+   **Product Quality Features:**
+   | Feature | Expected Range | Validation |
+   |---------|---------------|------------|
+   | `rating_variance` | >= 0 | Check not negative; 0.0 for single-review products |
 
 2. **Run validation**
-   - No NaN or Inf values
+   - No unexpected NaN or Inf values
    - Ratios within reasonable bounds
    - All expected features present
-   - Review aggregations correct
+   - Product count in variance output matches product count in reviews
 
 3. **Cross-validate calculations**
-   - Sample records: manually verify formula
-   - Edge cases: zero income, negative values
+   - Sample records: manually verify formulas
+   - Edge cases: zero income, single review products
 
 4. **Handle failures**
    - Log calculation errors
@@ -897,15 +909,14 @@ Validate that engineered features are correctly calculated and within expected r
 ## Phase 13: Version Features (DVC Checkpoint #3)
 
 ### Objective
-Version control the final feature set for model reproducibility.
+Version control the feature-engineered data for reproducibility.
 
 ### Steps
 
 1. **Add features to DVC**
    ```bash
-   dvc add data/features/features.csv
    dvc add data/features/financial_featured.csv
-   dvc add data/features/reviews_featured.jsonl
+   dvc add data/features/product_rating_variance.csv
    ```
 
 2. **Commit and push**
@@ -925,8 +936,8 @@ Version control the final feature set for model reproducibility.
    - Enable `dvc repro` for reproduction
 
 ### Why Version Here?
-- Final model-ready data
-- Ties to model versions
+- Ties financial health features to model training versions
+- Enables comparison of feature distributions across pipeline runs
 - Experiment reproducibility
 
 ---
@@ -934,7 +945,7 @@ Version control the final feature set for model reproducibility.
 ## Phase 14: Load to Database
 
 ### Objective
-Load processed data and feature embeddings into PostgreSQL (relational) and pgvector (vector) databases for the SavVio application.
+Load processed data, engineered features, and product embeddings into PostgreSQL (relational) and pgvector (vector) databases for the SavVio application.
 
 ### Environment Configuration
 
@@ -946,11 +957,10 @@ Load processed data and feature embeddings into PostgreSQL (relational) and pgve
 ### Steps
 
 1. **Identify datasets to load**
-   We will load the following processed and featured datasets into the database:
-   - `data/features/financial_featured.csv`
-   - `data/features/reviews_featured.jsonl`
-   - `data/processed/product_preprocessed.jsonl`
-   - `data/features/features.csv`
+   - `data/features/financial_featured.csv` — Financial profiles with health metrics
+   - `data/processed/product_preprocessed.jsonl` — Product catalog
+   - `data/features/product_rating_variance.csv` — Rating variance per product (merged onto products during load)
+   - `data/processed/review_preprocessed.jsonl` — Individual reviews
 
 2. **Create database loading package**
    ```
@@ -962,83 +972,107 @@ Load processed data and feature embeddings into PostgreSQL (relational) and pgve
    └── utils.py              # Connection helpers
    ```
 
-2. **Define database schema (tables)**
+3. **Define database schema (tables)**
 
    **PostgreSQL Tables:**
    ```sql
-   -- Financial data table
+   -- Financial profiles with pre-computed features
    CREATE TABLE financial_profiles (
        id SERIAL PRIMARY KEY,
+       user_id VARCHAR(255) UNIQUE,
        monthly_income DECIMAL(12,2),
-       rent DECIMAL(12,2),
-       recurring_bills DECIMAL(12,2),
+       monthly_expenses DECIMAL(12,2),
+       monthly_emi DECIMAL(12,2),
        savings_balance DECIMAL(12,2),
-       debt_obligations DECIMAL(12,2),
        discretionary_income DECIMAL(12,2),
        debt_to_income_ratio DECIMAL(5,4),
+       savings_to_income_ratio DECIMAL(5,4),
+       monthly_expense_burden_ratio DECIMAL(5,4),
+       emergency_fund_months DECIMAL(8,2),
        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
    );
 
-   -- Product data table
+   -- Products with quality signal from reviews
    CREATE TABLE products (
        id SERIAL PRIMARY KEY,
+       product_id VARCHAR(255) UNIQUE,
        product_name VARCHAR(500),
        category VARCHAR(100),
        price DECIMAL(12,2),
+       average_rating DECIMAL(2,1),
+       rating_number INTEGER,
+       rating_variance DECIMAL(5,4),     -- Merged from review features
        specifications TEXT,
        description TEXT,
        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
    );
 
-   -- Review data table
+   -- Individual reviews (for RAG context retrieval)
    CREATE TABLE reviews (
        id SERIAL PRIMARY KEY,
-       product_id INTEGER REFERENCES products(id),
+       product_id VARCHAR(255) REFERENCES products(product_id),
        reviewer_id VARCHAR(255),
        rating DECIMAL(2,1),
        text TEXT,
-       helpful_count INTEGER DEFAULT 0,
-       date TIMESTAMP,
+       helpful_vote INTEGER DEFAULT 0,
+       review_date TIMESTAMP,
        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
    );
    ```
 
    **pgvector Table (for embeddings):**
    ```sql
-   -- Enable pgvector extension
    CREATE EXTENSION IF NOT EXISTS vector;
 
-   -- Product embeddings for RAG
    CREATE TABLE product_embeddings (
        id SERIAL PRIMARY KEY,
-       product_id INTEGER REFERENCES products(id),
-       embedding vector(384),  -- Dimension depends on model
+       product_id VARCHAR(255) REFERENCES products(product_id),
+       embedding vector(384),
        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
    );
-   
-   -- Create index for similarity search
-   CREATE INDEX ON product_embeddings 
+
+   CREATE INDEX ON product_embeddings
    USING ivfflat (embedding vector_cosine_ops);
    ```
 
-3. **Generate product embeddings**
-   - Use product description + specifications
-   - Generate embeddings using Sentence-Transformers or OpenAI
-   - Store in pgvector for RAG retrieval
+4. **Merge rating_variance onto products during load**
 
-4. **Implement data loaders**
+   This is where `product_rating_variance.csv` gets attached to products:
+
+   ```python
+   # In postgres_loader.py
+   def load_products(products_path, rating_variance_path, engine):
+       """Load products with rating_variance merged from review features."""
+       products_df = pd.read_json(products_path, lines=True)
+       variance_df = pd.read_csv(rating_variance_path)
+
+       # Left join: keep all products, attach variance where available.
+       products_df = pd.merge(
+           products_df,
+           variance_df,
+           on="product_id",
+           how="left"
+       )
+
+       # Products with no reviews get rating_variance = 0.0.
+       products_df["rating_variance"] = products_df["rating_variance"].fillna(0.0)
+
+       products_df.to_sql("products", engine, if_exists="replace", index=False)
+   ```
+
+5. **Implement data loaders**
 
    **postgres_loader.py:**
-   - `load_financial_data(df, engine)` — Load financial profiles
-   - `load_product_data(df, engine)` — Load products
-   - `load_review_data(df, engine)` — Load reviews
+   - `load_financial_profiles(df, engine)` — Load financial profiles with features
+   - `load_products(products_path, rating_variance_path, engine)` — Load products with rating_variance merged
+   - `load_reviews(df, engine)` — Load individual reviews
    - `get_engine(env)` — Get connection based on environment
 
    **vector_loader.py:**
-   - `generate_embeddings(texts, model)` — Create embeddings
+   - `generate_embeddings(texts, model)` — Create embeddings from product descriptions
    - `load_embeddings(product_ids, embeddings, engine)` — Store in pgvector
 
-5. **Environment-based configuration**
+6. **Environment-based configuration**
    ```yaml
    # config/database.yaml
    development:
@@ -1047,7 +1081,7 @@ Load processed data and feature embeddings into PostgreSQL (relational) and pgve
      database: savvio_dev
      user: ${DB_USER}
      password: ${DB_PASSWORD}
-   
+
    production:
      host: /cloudsql/project:region:instance
      port: 5432
@@ -1056,10 +1090,10 @@ Load processed data and feature embeddings into PostgreSQL (relational) and pgve
      password: ${DB_PASSWORD}
    ```
 
-6. **Load data**
+7. **Load data**
    - Truncate existing data (or upsert strategy)
-   - Load financial profiles
-   - Load products
+   - Load financial profiles (with pre-computed features)
+   - Load products (with rating_variance merged)
    - Load reviews
    - Generate and load embeddings
 
@@ -1074,10 +1108,22 @@ Load processed data and feature embeddings into PostgreSQL (relational) and pgve
 
 ### Airflow Integration
 ```python
-load_to_postgres = PythonOperator(
-    task_id='load_to_postgres',
-    python_callable=postgres_loader.load_all,
-    op_kwargs={'env': '{{ var.value.environment }}'},
+load_financial = PythonOperator(
+    task_id='load_financial_profiles',
+    python_callable=postgres_loader.load_financial_profiles,
+    dag=dag
+)
+
+load_products = PythonOperator(
+    task_id='load_products',
+    python_callable=postgres_loader.load_products,
+    op_kwargs={'rating_variance_path': 'data/features/product_rating_variance.csv'},
+    dag=dag
+)
+
+load_reviews = PythonOperator(
+    task_id='load_reviews',
+    python_callable=postgres_loader.load_reviews,
     dag=dag
 )
 
@@ -1087,10 +1133,8 @@ generate_embeddings = PythonOperator(
     dag=dag
 )
 
-load_to_postgres >> generate_embeddings
+[load_financial, load_products, load_reviews] >> generate_embeddings
 ```
-
----
 
 ## Phase 15: Bias Detection & Mitigation
 

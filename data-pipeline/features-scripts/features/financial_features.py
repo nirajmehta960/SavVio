@@ -46,7 +46,7 @@ def calculate_ratios(df: pd.DataFrame) -> pd.DataFrame:
 
     # Metric 2: Savings rate.
     # Definition: Ratio of total savings wealth relative to monthly income.
-    df["savings_rate"] = np.where(
+    df["saving_to_income_ratio"] = np.where(
         df["monthly_income"] > 0,
         df["savings_balance"] / df["monthly_income"],
         np.nan
@@ -90,7 +90,7 @@ def run_financial_features(input_path: str, output_path: str) -> None:
 
         # Cleanup values before persisting output.
         # Keep undefined ratios as NaN; only normalize arithmetic output column.
-        ratio_cols = ["debt_to_income_ratio", "savings_rate", "monthly_expense_burden_ratio", "financial_runway"]
+        ratio_cols = ["debt_to_income_ratio", "saving_to_income_ratio", "monthly_expense_burden_ratio", "financial_runway"]
         df[ratio_cols] = df[ratio_cols].replace([np.inf, -np.inf], np.nan)
         df["discretionary_income"] = df["discretionary_income"].replace([np.inf, -np.inf], np.nan).fillna(0.0)
 
