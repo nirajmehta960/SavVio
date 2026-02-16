@@ -1135,58 +1135,116 @@ generate_embeddings = PythonOperator(
 
 [load_financial, load_products, load_reviews] >> generate_embeddings
 ```
+---
 
 ## Phase 15: Bias Detection & Mitigation
 
 ### Objective
-Detect and mitigate bias in the FEATURE data through slicing and analysis across subgroups. This happens on features because features are what the model uses for decisions.
+Detect and mitigate data representation bias across financial profiles and product/review data. The goal is to ensure the pipeline produces balanced, representative data so downstream models and the decision engine don't systematically disadvantage any subgroup.
 
-### Why After Feature Engineering?
+### Why Two Separate Tracks?
 
-| Check Point | What You'd Find | Why Features is Better |
-|-------------|-----------------|----------------------|
-| Raw Data | Demographic imbalance | Good to know, but... |
-| Features | **Bias in decision inputs** | This is what affects recommendations |
+Each data track is analyzed independently because they represent fundamentally different populations (users vs. products) and carry different bias risks:
 
-Example: Raw data might have equal income representation, but `affordability_score` feature might systematically disadvantage certain groups.
+| Track | Population | Bias Risk |
+|-------|-----------|-----------|
+| Financial | User profiles | Underrepresentation of financially vulnerable users — the people SavVio is designed to help most |
+| Product/Review | Products & reviews | Skewed category coverage, price range gaps, or unreliable quality signals for low-review products |
+
+> **Note:** Decision outcome bias (e.g., does the Green/Yellow/Red recommendation system unfairly penalize low-income users?) is tested in Phase 3: Model Development, once the Deterministic Financial Logic Engine and affordability calculations exist. The data pipeline focuses on **data representation bias** only.
 
 ### Steps
 
-1. **Identify slicing dimensions**
+1. **Financial data — Slice analysis**
 
-   | Slice Dimension | Groups | Why It Matters |
-   |-----------------|--------|----------------|
-   | Income bracket | Low (<$3k), Medium ($3k-$7k), High (>$7k) | Fair across income levels |
-   | Debt-to-income | Low (<0.2), Medium (0.2-0.4), High (>0.4) | Don't penalize debt unfairly |
-   | Expense burden | Low (<0.5), Medium (0.5-0.8), High (>0.8) | Fair regardless of spending |
-   | Product category | Electronics, Clothing, Home, etc. | No category bias |
-   | Rating distribution | Low-rated, Medium-rated, High-rated products | Reviews don't skew bias |
+   | Slice Dimension | Groups | What to Check |
+   |-----------------|--------|---------------|
+   | Income bracket | Low (<$3k), Medium ($3k-$7k), High (>$7k) | Sufficient low-income representation? |
+   | Debt-to-income ratio | Low (<0.2), Medium (0.2-0.4), High (>0.4) | Balanced coverage across debt levels? |
+   | Expense burden | Low (<0.5), Medium (0.5-0.8), High (>0.8) | Are high-burden users underrepresented? |
+   | Emergency fund months | Critical (<1), Low (1-3), Healthy (3+) | Enough financially stressed profiles? |
 
-2. **Perform slice analysis**
-   - Count records per slice
-   - Compare feature distributions across slices
-   - Identify underrepresented groups
+   **Analysis:**
+   - Count records per slice — flag slices with <10% of total records
+   - Compare feature distributions across slices (mean, median, std of each financial metric)
+   - Identify if any slice has significantly different feature distributions that could bias model training
+
+   **Why this matters for SavVio:**
+   If the financial data skews toward high-income, healthy profiles, the model won't learn effective decision boundaries for users who are financially vulnerable. These are the users most likely to benefit from a "Red Light" recommendation, and the system must work well for them.
+
+2. **Product/review data — Slice analysis**
+
+   | Slice Dimension | Groups | What to Check |
+   |-----------------|--------|---------------|
+   | Product category | Electronics, Clothing, Home, etc. | Any category with <5% of products? |
+   | Price range | Budget (<$25), Mid ($25-$200), Premium (>$200) | Balanced price representation? |
+   | Average rating | Low (<3), Medium (3-4), High (>4) | Are low-rated products underrepresented? |
+   | Review volume (rating_number) | Few (<10), Some (10-100), Many (>100) | Do low-review products lack reliable quality signals? |
+   | Rating variance | Low (<0.5), Medium (0.5-1.0), High (>1.0) | Are polarizing products represented? |
+
+   **Analysis:**
+   - Count products per slice — flag underrepresented groups
+   - Check if `rating_variance` is meaningful for low-review products (variance from 2 reviews is unreliable)
+   - Verify price distribution covers the range users are likely to query about
+
+   **Why this matters for SavVio:**
+   If the product data is dominated by one category (e.g., electronics), the RAG retrieval and quality signals will perform poorly for other categories. If budget products are underrepresented, the system may lack good alternatives to recommend when giving a "Yellow Light."
 
 3. **Evaluate for bias**
-   - Would low-income users get unfair "Red Light" recommendations?
-   - Are certain categories systematically scored lower?
-   - Do review-based features create bias?
+   - Are any critical slices underrepresented (<10% of records)?
+   - Would the data gaps cause the system to perform worse for specific user groups?
+   - Are there product categories where quality signals (rating_variance, avg_rating) are unreliable due to low review counts?
 
 4. **Implement mitigation if needed**
-   - Re-sample underrepresented groups
-   - Adjust feature calculations
-   - Document trade-offs
+
+   **Financial data:**
+   - Oversample underrepresented income brackets or debt levels
+   - Generate synthetic profiles for underrepresented slices
+   - Document which slices are underrepresented and the expected impact
+
+   **Product/review data:**
+   - Flag products with fewer than N reviews as having low-confidence quality signals
+   - Ensure category distribution covers common purchase types
+   - Document category gaps and their impact on recommendations
 
 5. **Document analysis**
    - `docs/bias_analysis_report.md`
+   - Include: slice counts, distribution comparisons, identified gaps, mitigation steps taken, trade-offs made
 
 ### Tools & Alternatives
 
 | Tool | Purpose | Alternative | When to Use Alternative |
 |------|---------|-------------|------------------------|
-| Fairlearn | Bias metrics | AIF360 | More comprehensive |
-| Pandas groupby | Manual slicing | Custom Python | Full control |
-| SliceFinder | Auto slice discovery | — | Exploratory |
+| Fairlearn | Bias metrics & analysis | AIF360 | More comprehensive fairness toolkit |
+| Pandas groupby | Manual slice analysis | Custom Python | Full control |
+| SliceFinder | Automatic slice discovery | — | Exploratory analysis |
+| Matplotlib/Seaborn | Distribution visualization | Plotly | Interactive charts |
+
+### Airflow Integration
+```python
+bias_financial = PythonOperator(
+    task_id='bias_analysis_financial',
+    python_callable=bias.analyze_financial_bias,
+    dag=dag
+)
+
+bias_products = PythonOperator(
+    task_id='bias_analysis_products',
+    python_callable=bias.analyze_product_bias,
+    dag=dag
+)
+
+# Run in parallel since they analyze independent tracks.
+[bias_financial, bias_products] >> complete
+```
+
+### Future: Decision Outcome Bias (Phase 3)
+Once the Deterministic Financial Logic Engine is built, a separate bias analysis should test:
+- Do Green/Yellow/Red recommendations distribute fairly across income brackets?
+- Does the affordability score systematically penalize certain financial profiles?
+- Are certain product categories more likely to receive Red Light recommendations regardless of user finances?
+
+This analysis requires the full decision pipeline and belongs in the model development phase, not the data pipeline.
 
 ---
 
