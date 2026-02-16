@@ -63,15 +63,15 @@ def _check(ge_result: dict, name: str, severity: Severity,
 # ═══════════════════════════════════════════════════════════════════════════
 
 FINANCIAL_REQUIRED_COLS = [
-    "user_id", "monthly_income", "monthly_expenses", "savings_balance",
+    "user_id", "monthly_income_usd", "monthly_expenses_usd", "savings_usd",
 ]
 FINANCIAL_OPTIONAL_COLS = [
-    "has_loan", "loan_amount", "monthly_emi", "loan_interest_rate",
+    "has_loan", "loan_amount_usd", "monthly_emi_usd", "loan_interest_rate_pct",
     "loan_term_months", "credit_score", "employment_status", "region",
 ]
 FINANCIAL_NUMERIC_COLS = [
-    "monthly_income", "monthly_expenses", "savings_balance",
-    "loan_amount", "monthly_emi", "loan_interest_rate",
+    "monthly_income_usd", "monthly_expenses_usd", "savings_usd",
+    "loan_amount_usd", "monthly_emi_usd", "loan_interest_rate_pct",
     "loan_term_months", "credit_score",
 ]
 
@@ -140,23 +140,23 @@ def validate_financial_raw(path: str, thresholds: dict) -> list[CheckResult]:
                               f"Column '{col}' must be numeric"))
 
     # ── 6. Value range checks ─────────────────────────────────────────────
-    # monthly_income >= 0
-    if "monthly_income" in gdf.columns:
-        res = gdf.expect_column_values_to_be_between("monthly_income", min_value=0)
+    # monthly_income_usd >= 0
+    if "monthly_income_usd" in gdf.columns:
+        res = gdf.expect_column_values_to_be_between("monthly_income_usd", min_value=0)
         results.append(_check(res, "fin_income_non_negative", Severity.WARNING, ds,
-                              "monthly_income should be >= 0"))
+                              "monthly_income_usd should be >= 0"))
 
-    # monthly_expenses >= 0
-    if "monthly_expenses" in gdf.columns:
-        res = gdf.expect_column_values_to_be_between("monthly_expenses", min_value=0)
+    # monthly_expenses_usd >= 0
+    if "monthly_expenses_usd" in gdf.columns:
+        res = gdf.expect_column_values_to_be_between("monthly_expenses_usd", min_value=0)
         results.append(_check(res, "fin_expenses_non_negative", Severity.WARNING, ds,
-                              "monthly_expenses should be >= 0"))
+                              "monthly_expenses_usd should be >= 0"))
 
-    # savings_balance (can be negative but flag extreme)
-    if "savings_balance" in gdf.columns:
-        res = gdf.expect_column_values_to_be_between("savings_balance", min_value=-1_000_000, max_value=10_000_000)
+    # savings_usd (can be negative but flag extreme)
+    if "savings_usd" in gdf.columns:
+        res = gdf.expect_column_values_to_be_between("savings_usd", min_value=-1_000_000, max_value=10_000_000)
         results.append(_check(res, "fin_savings_range", Severity.WARNING, ds,
-                              "savings_balance outside plausible range"))
+                              "savings_usd outside plausible range"))
 
     # credit_score 300–850
     if "credit_score" in gdf.columns:
@@ -164,11 +164,11 @@ def validate_financial_raw(path: str, thresholds: dict) -> list[CheckResult]:
         results.append(_check(res, "fin_credit_score_range", Severity.WARNING, ds,
                               "credit_score should be 300–850"))
 
-    # loan_interest_rate 0–100
-    if "loan_interest_rate" in gdf.columns:
-        res = gdf.expect_column_values_to_be_between("loan_interest_rate", min_value=0, max_value=100)
+    # loan_interest_rate_pct 0–100
+    if "loan_interest_rate_pct" in gdf.columns:
+        res = gdf.expect_column_values_to_be_between("loan_interest_rate_pct", min_value=0, max_value=100)
         results.append(_check(res, "fin_interest_rate_range", Severity.INFO, ds,
-                              "loan_interest_rate should be 0–100"))
+                              "loan_interest_rate_pct should be 0–100"))
 
     # ── 7. Duplicate check ────────────────────────────────────────────────
     if "user_id" in gdf.columns:
@@ -189,7 +189,7 @@ def validate_financial_raw(path: str, thresholds: dict) -> list[CheckResult]:
     # ── 8. employment_status valid set ────────────────────────────────────
     if "employment_status" in gdf.columns:
         valid_statuses = ["employed", "self-employed", "unemployed", "retired",
-                          "student", "part-time", "freelance"]
+                          "student", "part-time", "freelance", "Employed", "Self-employed", "Unemployed", "Retired", "Student"] # Add capitalized versions seen in head
         res = gdf.expect_column_values_to_be_in_set(
             "employment_status", valid_statuses, mostly=0.95
         )

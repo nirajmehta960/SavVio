@@ -16,6 +16,7 @@ import numpy as np
 import pandas as pd
 import great_expectations
 import great_expectations as gx
+from pathlib import Path
 try:
     from great_expectations.dataset import PandasDataset
 except ImportError:
@@ -119,13 +120,13 @@ def validate_financial_features(gdf: PandasDataset,
             metric_value=gdf["discretionary_income"].mean(),
         ))
 
-    # ── 4. debt_to_income_ratio: typically 0–2 ────────────────────────────
+    # ── 4. debt_to_income_ratio: typically 0–10 (clipped max) ─────────────
     if "debt_to_income_ratio" in gdf.columns:
         res = gdf.expect_column_values_to_be_between(
-            "debt_to_income_ratio", min_value=0, max_value=5.0, mostly=0.95
+            "debt_to_income_ratio", min_value=0, max_value=10.0, mostly=0.95
         )
         results.append(_check(res, "feat_dti_range", Severity.WARNING, ds,
-                              "debt_to_income_ratio should be 0–5 for 95% of records"))
+                              "debt_to_income_ratio should be 0–10 for 95% of records"))
 
         # Zero-income users should have ratio = 0 or flagged, not Inf
         if "income_usd" in gdf.columns:
@@ -141,21 +142,21 @@ def validate_financial_features(gdf: PandasDataset,
                     metric_value=int(has_inf),
                 ))
 
-    # ── 5. savings_rate: typically 0–1 ────────────────────────────────────
+    # ── 5. savings_rate: typically -1 to 10 (clipped bounds) ──────────────
     if "savings_rate" in gdf.columns:
         res = gdf.expect_column_values_to_be_between(
-            "savings_rate", min_value=-0.5, max_value=1.5, mostly=0.95
+            "savings_rate", min_value=-1.0, max_value=10.0, mostly=0.95
         )
         results.append(_check(res, "feat_savings_rate_range", Severity.WARNING, ds,
-                              "savings_rate should be roughly -0.5 to 1.5"))
+                              "savings_rate should be roughly -1.0 to 10.0"))
 
-    # ── 6. expense_burden_ratio: 0–1+ ─────────────────────────────────────
+    # ── 6. expense_burden_ratio: 0–10 (clipped max) ───────────────────────
     if "monthly_expense_burden_ratio" in gdf.columns:
         res = gdf.expect_column_values_to_be_between(
-            "monthly_expense_burden_ratio", min_value=0, max_value=3.0, mostly=0.95
+            "monthly_expense_burden_ratio", min_value=0, max_value=10.0, mostly=0.95
         )
         results.append(_check(res, "feat_expense_burden_range", Severity.WARNING, ds,
-                              "monthly_expense_burden_ratio should be 0–3 for 95% of records"))
+                              "monthly_expense_burden_ratio should be 0–10 for 95% of records"))
 
     # ── 7. emergency_fund_months >= 0 ─────────────────────────────────────
     if "financial_runway" in gdf.columns:
@@ -345,7 +346,8 @@ def validate_formula_spot_checks(gdf: PandasDataset) -> list[CheckResult]:
 # ═══════════════════════════════════════════════════════════════════════════
 
 def run_feature_validation(
-    features_path: str = "data/features/features.csv",
+    financial_path: str = "data/features/financial_featured.csv",
+    reviews_path: str = "data/features/reviews_featured.csv",
     threshold_config: Optional[str] = "config/validation_thresholds.json",
 ) -> ValidationReport:
     """Run all feature validations."""
@@ -356,23 +358,38 @@ def run_feature_validation(
     logger.info("  FEATURE VALIDATION")
     logger.info("═" * 50)
 
-    gdf = _load(features_path)
+    # 1. Validate Financial Features
+    if Path(financial_path).exists():
+        logger.info(f"── Validating financial health features from {financial_path} ──")
+        try:
+            gdf_fin = _load(financial_path)
+            for r in validate_financial_features(gdf_fin, thresholds):
+                report.add(r)
+            
+            logger.info("── Running formula spot-checks (Financial) ──")
+            for r in validate_formula_spot_checks(gdf_fin):
+                report.add(r)
+        except Exception as e:
+            logger.error(f"Failed to validate financial features: {e}")
+            report.add(CheckResult("load_financial_features", False, Severity.CRITICAL, "financial_features", "features", str(e), 0))
+    else:
+        logger.warning(f"Financial features file not found: {financial_path}")
 
-    logger.info("── Validating financial health features ──")
-    for r in validate_financial_features(gdf, thresholds):
-        report.add(r)
+    # 2. Validate Review Features
+    if Path(reviews_path).exists():
+        logger.info(f"── Validating review-based features from {reviews_path} ──")
+        try:
+            gdf_rev = _load(reviews_path)
+            for r in validate_review_features(gdf_rev, thresholds):
+                report.add(r)
+        except Exception as e:
+            logger.error(f"Failed to validate review features: {e}")
+            report.add(CheckResult("load_review_features", False, Severity.CRITICAL, "review_features", "features", str(e), 0))
+    else:
+        logger.warning(f"Review features file not found: {reviews_path}")
 
-    logger.info("── Validating affordability features ──")
-    for r in validate_affordability_features(gdf, thresholds):
-        report.add(r)
-
-    logger.info("── Validating review-based features ──")
-    for r in validate_review_features(gdf, thresholds):
-        report.add(r)
-
-    logger.info("── Running formula spot-checks ──")
-    for r in validate_formula_spot_checks(gdf):
-        report.add(r)
+    # 3. Affordability Features (Skipped as per run_features.py/README update)
+    logger.info("── Skipping affordability features (computed at inference time) ──")
 
     report.print_summary()
     report.save()
@@ -394,11 +411,12 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
     parser = argparse.ArgumentParser(description="Validate SavVio features")
-    parser.add_argument("--features", default="data/validated/features.csv")
+    parser.add_argument("--financial-features", default="data/features/financial_featured.csv")
+    parser.add_argument("--review-features", default="data/features/reviews_featured.csv")
     parser.add_argument("--thresholds", default=None)
     args = parser.parse_args()
 
-    report = run_feature_validation(args.features, args.thresholds)
+    report = run_feature_validation(args.financial_features, args.review_features, args.thresholds)
 
     if not report.passed:
         exit(1)

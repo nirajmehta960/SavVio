@@ -2,9 +2,10 @@
 Unified validation runner for SavVio data pipeline.
 
 Can run any combination of validation stages:
-  - raw       → validates data/raw/ (Phase 6)
-  - processed → validates data/processed/ (Phase 9)
-  - features  → validates data/validated/ (Phase 12)
+  - raw       → validates data/raw/ 
+  - anomalies → checks for outliers 
+  - processed → validates data/processed/ 
+  - features  → validates data/validated/ 
 
 Each stage returns a ValidationReport with a pipeline_action:
   CONTINUE  — all checks passed (or only INFO-level failures)
@@ -24,9 +25,10 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from validation_config import ValidationReport
-from raw_validator import run_raw_validation
-from processed_validator import run_processed_validation
-from feature_validator import run_feature_validation
+from validate.raw_validator import run_raw_validation
+from validate.processed_validator import run_processed_validation
+from validate.feature_validator import run_feature_validation
+from anomaly.anomaly_validator import run_anomaly_validation
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +63,16 @@ def validate_features(**kwargs) -> dict:
     Raises RuntimeError on CRITICAL failure to halt the DAG.
     """
     report = run_feature_validation()
+    _handle_report(report)
+    return report.summary
+
+
+def validate_anomalies(**kwargs) -> dict:
+    """
+    Airflow PythonOperator callable for anomaly detection.
+    Raises RuntimeError on CRITICAL failure (though rare for anomalies).
+    """
+    report = run_anomaly_validation()
     _handle_report(report)
     return report.summary
 
@@ -137,34 +149,49 @@ def main():
     parser = argparse.ArgumentParser(description="SavVio Data Validation Runner")
     parser.add_argument(
         "stage",
-        choices=["raw", "processed", "features", "all"],
+        choices=["raw", "processed", "features", "anomalies", "all"],
         help="Which validation stage to run",
     )
     args = parser.parse_args()
 
     exit_code = 0
 
-    if args.stage in ("raw", "all"):
+    # Map stage names to callables
+    STAGE_MAP = {
+        "raw": validate_raw,
+        "processed": validate_processed,
+        "features": validate_features,
+        "anomalies": validate_anomalies,
+    }
+
+    if args.stage == "all":
+        stages_to_run = ["raw", "anomalies", "processed", "features"]
+    else:
+        stages_to_run = [args.stage]
+
+    for stage_name in stages_to_run:
+        validator_func = STAGE_MAP.get(stage_name)
+        if not validator_func:
+            logger.error(f"Unknown stage: {stage_name}")
+            continue
+            
         try:
-            validate_raw()
+            logger.info(f"Running validation for stage: {stage_name}")
+            validator_func()
         except RuntimeError:
             exit_code = 1
             if args.stage != "all":
                 sys.exit(1)
-
-    if args.stage in ("processed", "all"):
-        try:
-            validate_processed()
         except RuntimeError:
             exit_code = 1
+            logger.error(f"Validation for stage '{stage_name}' failed critically.")
+            if args.stage != "all": # If only one stage was requested, exit immediately
+                sys.exit(1)
+        except Exception as e:
+            exit_code = 1
+            logger.exception(f"An unexpected error occurred during validation for stage '{stage_name}': {e}")
             if args.stage != "all":
                 sys.exit(1)
-
-    if args.stage in ("features", "all"):
-        try:
-            validate_features()
-        except RuntimeError:
-            exit_code = 1
 
     sys.exit(exit_code)
 
