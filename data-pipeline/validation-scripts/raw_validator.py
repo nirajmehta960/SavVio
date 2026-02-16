@@ -12,9 +12,14 @@ Datasets:
 
 import logging
 import pandas as pd
+import great_expectations
 import great_expectations as gx
-from great_expectations.dataset import PandasDataset
+try:
+    from great_expectations.dataset import PandasDataset
+except ImportError:
+    from great_expectations.dataset.pandas_dataset import PandasDataset
 
+from typing import Optional, List
 from validation_config import (
     CheckResult, Severity, ValidationReport, load_thresholds,
 )
@@ -243,6 +248,11 @@ def validate_products_raw(path: str, thresholds: dict) -> list[CheckResult]:
             sev = Severity.CRITICAL
         elif null_pct > thresholds["null_pct_warning"]:
             sev = Severity.WARNING
+        
+        # DOWNGRADE severity for 'price' because preprocessing imputes missing values
+        if col == "price" and sev == Severity.CRITICAL:
+            sev = Severity.WARNING
+
         res = gdf.expect_column_values_to_not_be_null(col, mostly=1 - thresholds["null_pct_warning"])
         results.append(_check(res, f"prod_nulls_{col}", sev, ds,
                               f"Null % = {null_pct:.2%}"))
@@ -435,10 +445,10 @@ def validate_cross_references(products_path: str, reviews_path: str) -> list[Che
 # ═══════════════════════════════════════════════════════════════════════════
 
 def run_raw_validation(
-    financial_path: str = "data/raw/financial.csv",
-    products_path: str = "data/raw/products.jsonl",
-    reviews_path: str = "data/raw/reviews.jsonl",
-    threshold_config: str | None = "config/validation_thresholds.json",
+    financial_path: str = "data/raw/financial_data.csv",
+    products_path: str = "data/raw/product_data.jsonl",
+    reviews_path: str = "data/raw/review_data.jsonl",
+    threshold_config: Optional[str] = "config/validation_thresholds.json",
 ) -> ValidationReport:
     """
     Run all raw data validations.
@@ -491,9 +501,9 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
     parser = argparse.ArgumentParser(description="Validate raw SavVio data")
-    parser.add_argument("--financial", default="data/raw/financial.csv")
-    parser.add_argument("--products", default="data/raw/products.jsonl")
-    parser.add_argument("--reviews", default="data/raw/reviews.jsonl")
+    parser.add_argument("--financial", default="data/raw/financial_data.csv")
+    parser.add_argument("--products", default="data/raw/product_data.jsonl")
+    parser.add_argument("--reviews", default="data/raw/review_data.jsonl")
     parser.add_argument("--thresholds", default=None)
     args = parser.parse_args()
 

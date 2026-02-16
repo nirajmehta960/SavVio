@@ -12,9 +12,14 @@ Expected processed columns (based on preprocessing steps):
 
 import logging
 import pandas as pd
+import great_expectations
 import great_expectations as gx
-from great_expectations.dataset import PandasDataset
+try:
+    from great_expectations.dataset import PandasDataset
+except ImportError:
+    from great_expectations.dataset.pandas_dataset import PandasDataset
 
+from typing import Optional, List
 from validation_config import (
     CheckResult, Severity, ValidationReport, load_thresholds,
 )
@@ -161,7 +166,7 @@ def validate_financial_processed(path: str, raw_path: str,
 # ═══════════════════════════════════════════════════════════════════════════
 
 PRODUCT_PROCESSED_COLS = [
-    "product_id", "product_name", "price_usd",
+    "product_id", "product_name", "price",
 ]
 PRODUCT_OPTIONAL_PROCESSED = [
     "average_rating", "rating_number", "description", "features",
@@ -189,16 +194,16 @@ def validate_products_processed(path: str, raw_path: str,
         results.append(_check(res, "prod_proc_name_non_empty", Severity.WARNING, ds,
                               "product_name should not be empty after cleaning"))
 
-    # ── 3. price_usd valid ────────────────────────────────────────────────
-    if "price_usd" in gdf.columns:
-        res = gdf.expect_column_values_to_be_between("price_usd", min_value=0.01, max_value=100_000)
+    # ── 3. price valid ────────────────────────────────────────────────
+    if "price" in gdf.columns:
+        res = gdf.expect_column_values_to_be_between("price", min_value=0.01, max_value=100_000)
         results.append(_check(res, "prod_proc_price_range", Severity.WARNING, ds,
-                              "price_usd should be $0.01–$100,000"))
+                              "price should be $0.01–$100,000"))
 
         # No nulls in price after processing
-        res = gdf.expect_column_values_to_not_be_null("price_usd")
+        res = gdf.expect_column_values_to_not_be_null("price")
         results.append(_check(res, "prod_proc_price_no_nulls", Severity.CRITICAL, ds,
-                              "price_usd must not be null after processing"))
+                              "price must not be null after processing"))
 
     # ── 4. main_category should be dropped (constant column) ──────────────
     if "main_category" in gdf.columns:
@@ -377,13 +382,13 @@ def validate_reviews_processed(path: str, raw_path: str,
 # ═══════════════════════════════════════════════════════════════════════════
 
 def run_processed_validation(
-    financial_path: str = "data/processed/financial_processed.csv",
-    products_path: str = "data/processed/products_processed.csv",
-    reviews_path: str = "data/processed/reviews_processed.csv",
-    raw_financial: str = "data/raw/financial.csv",
-    raw_products: str = "data/raw/products.jsonl",
-    raw_reviews: str = "data/raw/reviews.jsonl",
-    threshold_config: str | None = "config/validation_thresholds.json",
+    financial_path: str = "data/processed/financial_preprocessed.csv",
+    products_path: str = "data/processed/product_preprocessed.jsonl",
+    reviews_path: str = "data/processed/review_preprocessed.jsonl",
+    raw_financial: str = "data/raw/financial_data.csv",
+    raw_products: str = "data/raw/product_data.jsonl",
+    raw_reviews: str = "data/raw/review_data.jsonl",
+    threshold_config: Optional[str] = "config/validation_thresholds.json",
 ) -> ValidationReport:
     """Run all processed data validations."""
     thresholds = load_thresholds(threshold_config)
@@ -425,12 +430,12 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
     parser = argparse.ArgumentParser(description="Validate processed SavVio data")
-    parser.add_argument("--financial", default="data/processed/financial_processed.csv")
-    parser.add_argument("--products", default="data/processed/products_processed.csv")
-    parser.add_argument("--reviews", default="data/processed/reviews_processed.csv")
-    parser.add_argument("--raw-financial", default="data/raw/financial.csv")
-    parser.add_argument("--raw-products", default="data/raw/products.jsonl")
-    parser.add_argument("--raw-reviews", default="data/raw/reviews.jsonl")
+    parser.add_argument("--financial", default="data/processed/financial_preprocessed.csv")
+    parser.add_argument("--products", default="data/processed/product_preprocessed.jsonl")
+    parser.add_argument("--reviews", default="data/processed/review_preprocessed.jsonl")
+    parser.add_argument("--raw-financial", default="data/raw/financial_data.csv")
+    parser.add_argument("--raw-products", default="data/raw/product_data.jsonl")
+    parser.add_argument("--raw-reviews", default="data/raw/review_data.jsonl")
     parser.add_argument("--thresholds", default=None)
     args = parser.parse_args()
 

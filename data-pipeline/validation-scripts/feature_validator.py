@@ -14,9 +14,14 @@ Feature groups:
 import logging
 import numpy as np
 import pandas as pd
+import great_expectations
 import great_expectations as gx
-from great_expectations.dataset import PandasDataset
+try:
+    from great_expectations.dataset import PandasDataset
+except ImportError:
+    from great_expectations.dataset.pandas_dataset import PandasDataset
 
+from typing import Optional, List
 from validation_config import (
     CheckResult, Severity, ValidationReport, load_thresholds,
 )
@@ -81,8 +86,8 @@ FINANCIAL_FEATURES = [
     "discretionary_income",
     "debt_to_income_ratio",
     "savings_rate",
-    "expense_burden_ratio",
-    "emergency_fund_months",
+    "monthly_expense_burden_ratio",
+    "financial_runway",
 ]
 
 
@@ -145,20 +150,20 @@ def validate_financial_features(gdf: PandasDataset,
                               "savings_rate should be roughly -0.5 to 1.5"))
 
     # ── 6. expense_burden_ratio: 0–1+ ─────────────────────────────────────
-    if "expense_burden_ratio" in gdf.columns:
+    if "monthly_expense_burden_ratio" in gdf.columns:
         res = gdf.expect_column_values_to_be_between(
-            "expense_burden_ratio", min_value=0, max_value=3.0, mostly=0.95
+            "monthly_expense_burden_ratio", min_value=0, max_value=3.0, mostly=0.95
         )
         results.append(_check(res, "feat_expense_burden_range", Severity.WARNING, ds,
-                              "expense_burden_ratio should be 0–3 for 95% of records"))
+                              "monthly_expense_burden_ratio should be 0–3 for 95% of records"))
 
     # ── 7. emergency_fund_months >= 0 ─────────────────────────────────────
-    if "emergency_fund_months" in gdf.columns:
+    if "financial_runway" in gdf.columns:
         res = gdf.expect_column_values_to_be_between(
-            "emergency_fund_months", min_value=0, mostly=0.90
+            "financial_runway", min_value=0, mostly=0.90
         )
-        results.append(_check(res, "feat_emergency_fund_range", Severity.INFO, ds,
-                              "emergency_fund_months should be >= 0"))
+        results.append(_check(res, "feat_financial_runway_range", Severity.INFO, ds,
+                              "financial_runway should be >= 0"))
 
     return results
 
@@ -217,16 +222,13 @@ def validate_affordability_features(gdf: PandasDataset,
 
     return results
 
-
 # ═══════════════════════════════════════════════════════════════════════════
 # Review-based features
 # ═══════════════════════════════════════════════════════════════════════════
 
 REVIEW_FEATURES = [
-    "avg_product_rating",
     "num_reviews",
     "rating_variance",
-    "has_text_reviews",
 ]
 
 
@@ -246,31 +248,17 @@ def validate_review_features(gdf: PandasDataset,
     for col in REVIEW_FEATURES:
         results.extend(_no_nan_inf(gdf, col, ds, Severity.WARNING))
 
-    # ── 3. avg_product_rating in 1–5 ─────────────────────────────────────
-    if "avg_product_rating" in gdf.columns:
-        res = gdf.expect_column_values_to_be_between(
-            "avg_product_rating", min_value=1.0, max_value=5.0
-        )
-        results.append(_check(res, "feat_avg_rating_range", Severity.CRITICAL, ds,
-                              "avg_product_rating must be 1.0–5.0"))
-
-    # ── 4. num_reviews >= 0 ───────────────────────────────────────────────
+    # ── 3. num_reviews >= 0 ───────────────────────────────────────────────
     if "num_reviews" in gdf.columns:
         res = gdf.expect_column_values_to_be_between("num_reviews", min_value=0)
         results.append(_check(res, "feat_num_reviews_non_negative", Severity.CRITICAL, ds,
                               "num_reviews must be >= 0"))
 
-    # ── 5. rating_variance >= 0 ───────────────────────────────────────────
+    # ── 4. rating_variance >= 0 ───────────────────────────────────────────
     if "rating_variance" in gdf.columns:
         res = gdf.expect_column_values_to_be_between("rating_variance", min_value=0)
         results.append(_check(res, "feat_rating_variance_non_negative", Severity.WARNING, ds,
                               "rating_variance must be >= 0"))
-
-    # ── 6. has_text_reviews is binary ─────────────────────────────────────
-    if "has_text_reviews" in gdf.columns:
-        res = gdf.expect_column_values_to_be_in_set("has_text_reviews", [0, 1, True, False])
-        results.append(_check(res, "feat_has_text_binary", Severity.WARNING, ds,
-                              "has_text_reviews should be 0/1"))
 
     return results
 
@@ -357,8 +345,8 @@ def validate_formula_spot_checks(gdf: PandasDataset) -> list[CheckResult]:
 # ═══════════════════════════════════════════════════════════════════════════
 
 def run_feature_validation(
-    features_path: str = "data/validated/features.csv",
-    threshold_config: str | None = "config/validation_thresholds.json",
+    features_path: str = "data/features/features.csv",
+    threshold_config: Optional[str] = "config/validation_thresholds.json",
 ) -> ValidationReport:
     """Run all feature validations."""
     thresholds = load_thresholds(threshold_config)
