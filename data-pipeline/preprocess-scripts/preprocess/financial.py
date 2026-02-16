@@ -185,6 +185,11 @@ def preprocess_financial_data(input_path: str, output_path: str) -> pd.DataFrame
 
     LOGGER.info("Rows dropped (range violations total): %d", total_range_violations_dropped)
 
+    # Round monetary columns to 2 decimal places for consistency
+    for col in MONETARY_FLOAT_COLUMNS:
+        if col in df.columns:
+            df[col] = df[col].round(2)
+
     _print_frame_snapshot(df, title="Final Preprocessed Dataset")
 
     ensure_output_dir(output_path)
