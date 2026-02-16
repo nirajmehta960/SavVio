@@ -23,35 +23,33 @@ setup_logging()
 logger = logging.getLogger(__name__)
 
 
-def compute_rating_variance(reviews_df: pd.DataFrame) -> pd.DataFrame:
+def compute_product_features(reviews_df: pd.DataFrame) -> pd.DataFrame:
     """
-    Computes per-product rating variance (standard deviation).
-
-    A high variance indicates polarizing opinions (mixed quality signal).
-    A low variance indicates consensus among reviewers.
+    Computes per-product rating variance and review count.
 
     Args:
         reviews_df: DataFrame with at least 'product_id' and 'rating' columns.
 
     Returns:
-        DataFrame with columns: product_id, rating_variance
+        DataFrame with columns: product_id, rating_variance, num_reviews
     """
     if "product_id" not in reviews_df.columns or "rating" not in reviews_df.columns:
         logger.error("Required columns 'product_id' and 'rating' not found.")
         raise ValueError("Missing required columns: product_id, rating")
 
-    product_variance = (
+    # Aggregate: std for variance, count for num_reviews
+    product_stats = (
         reviews_df
         .groupby("product_id")["rating"]
-        .std()
+        .agg(["std", "count"])
         .reset_index()
-        .rename(columns={"rating": "rating_variance"})
+        .rename(columns={"std": "rating_variance", "count": "num_reviews"})
     )
 
     # Products with a single review have NaN std dev; default to 0.0.
-    product_variance["rating_variance"] = product_variance["rating_variance"].fillna(0.0)
+    product_stats["rating_variance"] = product_stats["rating_variance"].fillna(0.0)
 
-    return product_variance
+    return product_stats
 
 
 def run_review_features(reviews_path: str, output_path: str) -> None:
@@ -71,21 +69,21 @@ def run_review_features(reviews_path: str, output_path: str) -> None:
         reviews_df = pd.read_json(reviews_path, lines=True)
         logger.info(f"Loaded {len(reviews_df)} reviews.")
 
-        # Compute product-level rating variance.
-        product_variance = compute_rating_variance(reviews_df)
-        logger.info(f"Computed rating_variance for {len(product_variance)} products.")
+        # Compute product-level rating variance and count.
+        product_features = compute_product_features(reviews_df)
+        logger.info(f"Computed features for {len(product_features)} products.")
 
         logger.info(
             "rating_variance summary — mean: %.4f, median: %.4f, max: %.4f",
-            float(product_variance["rating_variance"].mean()),
-            float(product_variance["rating_variance"].median()),
-            float(product_variance["rating_variance"].max()),
+            float(product_features["rating_variance"].mean()),
+            float(product_features["rating_variance"].median()),
+            float(product_features["rating_variance"].max()),
         )
 
         # Persist output.
         ensure_output_dir(output_path)
-        product_variance.to_csv(output_path, index=False)
-        logger.info(f"Saved product rating variance to {output_path}")
+        product_features.to_csv(output_path, index=False)
+        logger.info(f"Saved product features to {output_path}")
 
     except Exception as e:
         logger.error(f"Failed to process review features: {e}", exc_info=True)

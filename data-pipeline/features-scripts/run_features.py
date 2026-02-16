@@ -43,7 +43,7 @@ def main():
     
     # Review and product input/output files.
     REV_INPUT = os.path.join(DATA_DIR, "processed/review_preprocessed.jsonl")
-    REV_OUTPUT = os.path.join(DATA_DIR, "features/reviews_featured.jsonl")
+    REV_OUTPUT = os.path.join(DATA_DIR, "features/reviews_featured.csv")
     
     PROD_INPUT = os.path.join(DATA_DIR, "processed/product_preprocessed.jsonl")
     
