@@ -1,7 +1,7 @@
 # latest Airflow image
-FROM apache/airflow:2.10.2
+FROM apache/airflow:3.1.7
 
 COPY data-requirements.txt .
 
 # Install dependencies for data pipeline
-RUN pip install -r data-requirements.txts
+RUN pip install -r data-requirements.txt

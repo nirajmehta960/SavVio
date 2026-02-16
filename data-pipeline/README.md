@@ -791,7 +791,7 @@ Version control the processed data to track transformations.
 ## Phase 11: Feature Engineering
 
 ### Objective
-Create meaningful features that maximize predictive signal for SavVio's decision engine.
+Create meaningful features within each data track — financial health features per user and quality features per product. Affordability metrics (which require both user and product data) are computed at inference time by the Deterministic Financial Logic Engine, not pre-computed in the pipeline.
 
 ### Steps
 
@@ -800,47 +800,44 @@ Create meaningful features that maximize predictive signal for SavVio's decision
    scripts/features/
    ├── __init__.py
    ├── financial_features.py
-   ├── affordability_features.py
    ├── review_features.py
    ├── utils.py
    └── run_features.py
    ```
 
-2. **Financial health features**
+2. **Financial health features** (`financial_features.py`)
+
+   Input: `data/processed/financial_preprocessed.csv`
+   Output: `data/features/financial_featured.csv`
 
    | Feature | Formula | Purpose |
    |---------|---------|---------|
-   | `discretionary_income` | income - fixed_expenses | Available money |
-   | `debt_to_income_ratio` | debt / income | Burden indicator |
-   | `savings_rate` | savings / income | Health indicator |
-   | `expense_burden_ratio` | expenses / income | Spending pattern |
-   | `emergency_fund_months` | savings / monthly_expenses | Safety buffer |
+   | `discretionary_income` | income - (expenses + emi) | Available money after obligations |
+   | `debt_to_income_ratio` | emi / income | Debt burden indicator |
+   | `savings_to_income_ratio` | savings / income | Savings health indicator |
+   | `monthly_expense_burden_ratio` | (expenses + emi) / income | Spending pattern |
+   | `emergency_fund_months` | savings / (expenses + emi) | Safety buffer in months |
 
-3. **Affordability features**
+3. **Product quality features** (`review_features.py`)
 
-   | Feature | Formula | Purpose |
-   |---------|---------|---------|
-   | `price_to_income_ratio` | price / income | Relative cost |
-   | `affordability_score` | discretionary - price | Can afford? |
-   | `residual_utility_score` | (savings - price) / expenses | Emergency fund impact |
-
-4. **Review-based features**
+   Input: `data/processed/review_preprocessed.jsonl`
+   Output: `data/features/product_rating_variance.csv` (one row per product)
 
    | Feature | Formula | Purpose |
    |---------|---------|---------|
-   | `avg_product_rating` | mean(rating) per product | Product quality signal |
-   | `num_reviews` | count of reviews per product | Review volume/popularity |
-   | `rating_variance` | std(rating) per product | Rating consistency |
-   | `has_text_reviews` | 1 if text reviews exist, 0 else | Detailed feedback indicator |
+   | `rating_variance` | std(rating) per product | Rating consensus signal |
 
-5. **Handle edge cases**
-   - Zero income: flag, don't compute ratios
-   - Division by zero: safe division with defaults
-   - Missing review data: fill with defaults
+   > **Note:** `average_rating` and `rating_number` (equivalent to `num_reviews`) already exist in the product metadata. The only feature requiring individual review data is `rating_variance`, which measures how polarized opinions are about a product.
 
-6. **Save features**
-   - `data/validated/features.csv`
-   - `config/feature_definitions.json`
+4. **Handle edge cases**
+   - Zero income: ratios set to NaN (XGBoost handles natively)
+   - Division by zero: safe handling with NaN defaults
+   - Single-review products: rating_variance defaults to 0.0
+
+5. **Outputs**
+   - `data/features/financial_featured.csv` — Financial profiles enriched with health metrics
+   - `data/features/product_rating_variance.csv` — Product-level rating variance
+   - `config/feature_definitions.json` — Feature metadata documentation
 
 ### Tools & Alternatives
 
@@ -848,7 +845,6 @@ Create meaningful features that maximize predictive signal for SavVio's decision
 |------|---------|-------------|------------------------|
 | Pandas | Feature creation | Polars | Large datasets |
 | NumPy | Numerical ops | — | — |
-| Scikit-learn | Encoding | Category Encoders | More encoding options |
 
 ---
 
@@ -861,26 +857,29 @@ Validate that engineered features are correctly calculated and within expected r
 
 1. **Define feature expectations**
 
+   **Financial Features:**
    | Feature | Expected Range | Validation |
    |---------|---------------|------------|
-   | `discretionary_income` | Can be negative | Check not NaN |
-   | `debt_to_income_ratio` | 0 to ~2 | Flag if > 2 |
-   | `savings_rate` | 0 to ~1 | Flag if > 1 |
-   | `affordability_score` | Any | Check not NaN/Inf |
-   | `residual_utility_score` | Any | Check not NaN/Inf |
-   | `avg_product_rating` | 1-5 | Check in range |
-   | `num_reviews` | >= 0 | Check not negative |
-   | `rating_variance` | >= 0 | Check not negative |
+   | `discretionary_income` | Can be negative | Check not NaN where income > 0 |
+   | `debt_to_income_ratio` | 0 to ~2 | Flag if > 2; NaN only when income = 0 |
+   | `savings_to_income_ratio` | 0 to ~1 | Flag if > 1; NaN only when income = 0 |
+   | `monthly_expense_burden_ratio` | 0 to ~1 | Flag if > 1 |
+   | `emergency_fund_months` | >= 0 | NaN only when obligations = 0 |
+
+   **Product Quality Features:**
+   | Feature | Expected Range | Validation |
+   |---------|---------------|------------|
+   | `rating_variance` | >= 0 | Check not negative; 0.0 for single-review products |
 
 2. **Run validation**
-   - No NaN or Inf values
+   - No unexpected NaN or Inf values
    - Ratios within reasonable bounds
    - All expected features present
-   - Review aggregations correct
+   - Product count in variance output matches product count in reviews
 
 3. **Cross-validate calculations**
-   - Sample records: manually verify formula
-   - Edge cases: zero income, negative values
+   - Sample records: manually verify formulas
+   - Edge cases: zero income, single review products
 
 4. **Handle failures**
    - Log calculation errors
@@ -898,18 +897,19 @@ Validate that engineered features are correctly calculated and within expected r
 ## Phase 13: Version Features (DVC Checkpoint #3)
 
 ### Objective
-Version control the final feature set for model reproducibility.
+Version control the feature-engineered data for reproducibility.
 
 ### Steps
 
 1. **Add features to DVC**
    ```bash
-   dvc add data/validated/features.csv
+   dvc add data/features/financial_featured.csv
+   dvc add data/features/product_rating_variance.csv
    ```
 
 2. **Commit and push**
    ```bash
-   git add data/validated/*.dvc
+   git add data/features/*.dvc
    git commit -m "Add features v1.0"
    dvc push
    ```
@@ -924,8 +924,8 @@ Version control the final feature set for model reproducibility.
    - Enable `dvc repro` for reproduction
 
 ### Why Version Here?
-- Final model-ready data
-- Ties to model versions
+- Ties financial health features to model training versions
+- Enables comparison of feature distributions across pipeline runs
 - Experiment reproducibility
 
 ---
@@ -933,7 +933,7 @@ Version control the final feature set for model reproducibility.
 ## Phase 14: Load to Database
 
 ### Objective
-Load processed data and feature embeddings into PostgreSQL (relational) and pgvector (vector) databases for the SavVio application.
+Load processed data, engineered features, and product embeddings into PostgreSQL (relational) and pgvector (vector) databases for the SavVio application.
 
 ### Environment Configuration
 
@@ -944,7 +944,13 @@ Load processed data and feature embeddings into PostgreSQL (relational) and pgve
 
 ### Steps
 
-1. **Create database loading package**
+1. **Identify datasets to load**
+   - `data/features/financial_featured.csv` — Financial profiles with health metrics
+   - `data/processed/product_preprocessed.jsonl` — Product catalog
+   - `data/features/product_rating_variance.csv` — Rating variance per product (merged onto products during load)
+   - `data/processed/review_preprocessed.jsonl` — Individual reviews
+
+2. **Create database loading package**
    ```
    scripts/database/
    ├── __init__.py
@@ -954,83 +960,107 @@ Load processed data and feature embeddings into PostgreSQL (relational) and pgve
    └── utils.py              # Connection helpers
    ```
 
-2. **Define database schema (tables)**
+3. **Define database schema (tables)**
 
    **PostgreSQL Tables:**
    ```sql
-   -- Financial data table
+   -- Financial profiles with pre-computed features
    CREATE TABLE financial_profiles (
        id SERIAL PRIMARY KEY,
+       user_id VARCHAR(255) UNIQUE,
        monthly_income DECIMAL(12,2),
-       rent DECIMAL(12,2),
-       recurring_bills DECIMAL(12,2),
+       monthly_expenses DECIMAL(12,2),
+       monthly_emi DECIMAL(12,2),
        savings_balance DECIMAL(12,2),
-       debt_obligations DECIMAL(12,2),
        discretionary_income DECIMAL(12,2),
        debt_to_income_ratio DECIMAL(5,4),
+       savings_to_income_ratio DECIMAL(5,4),
+       monthly_expense_burden_ratio DECIMAL(5,4),
+       emergency_fund_months DECIMAL(8,2),
        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
    );
 
-   -- Product data table
+   -- Products with quality signal from reviews
    CREATE TABLE products (
        id SERIAL PRIMARY KEY,
+       product_id VARCHAR(255) UNIQUE,
        product_name VARCHAR(500),
        category VARCHAR(100),
        price DECIMAL(12,2),
+       average_rating DECIMAL(2,1),
+       rating_number INTEGER,
+       rating_variance DECIMAL(5,4),     -- Merged from review features
        specifications TEXT,
        description TEXT,
        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
    );
 
-   -- Review data table
+   -- Individual reviews (for RAG context retrieval)
    CREATE TABLE reviews (
        id SERIAL PRIMARY KEY,
-       product_id INTEGER REFERENCES products(id),
+       product_id VARCHAR(255) REFERENCES products(product_id),
        reviewer_id VARCHAR(255),
        rating DECIMAL(2,1),
        text TEXT,
-       helpful_count INTEGER DEFAULT 0,
-       date TIMESTAMP,
+       helpful_vote INTEGER DEFAULT 0,
+       review_date TIMESTAMP,
        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
    );
    ```
 
    **pgvector Table (for embeddings):**
    ```sql
-   -- Enable pgvector extension
    CREATE EXTENSION IF NOT EXISTS vector;
 
-   -- Product embeddings for RAG
    CREATE TABLE product_embeddings (
        id SERIAL PRIMARY KEY,
-       product_id INTEGER REFERENCES products(id),
-       embedding vector(384),  -- Dimension depends on model
+       product_id VARCHAR(255) REFERENCES products(product_id),
+       embedding vector(384),
        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
    );
-   
-   -- Create index for similarity search
-   CREATE INDEX ON product_embeddings 
+
+   CREATE INDEX ON product_embeddings
    USING ivfflat (embedding vector_cosine_ops);
    ```
 
-3. **Generate product embeddings**
-   - Use product description + specifications
-   - Generate embeddings using Sentence-Transformers or OpenAI
-   - Store in pgvector for RAG retrieval
+4. **Merge rating_variance onto products during load**
 
-4. **Implement data loaders**
+   This is where `product_rating_variance.csv` gets attached to products:
+
+   ```python
+   # In postgres_loader.py
+   def load_products(products_path, rating_variance_path, engine):
+       """Load products with rating_variance merged from review features."""
+       products_df = pd.read_json(products_path, lines=True)
+       variance_df = pd.read_csv(rating_variance_path)
+
+       # Left join: keep all products, attach variance where available.
+       products_df = pd.merge(
+           products_df,
+           variance_df,
+           on="product_id",
+           how="left"
+       )
+
+       # Products with no reviews get rating_variance = 0.0.
+       products_df["rating_variance"] = products_df["rating_variance"].fillna(0.0)
+
+       products_df.to_sql("products", engine, if_exists="replace", index=False)
+   ```
+
+5. **Implement data loaders**
 
    **postgres_loader.py:**
-   - `load_financial_data(df, engine)` — Load financial profiles
-   - `load_product_data(df, engine)` — Load products
-   - `load_review_data(df, engine)` — Load reviews
+   - `load_financial_profiles(df, engine)` — Load financial profiles with features
+   - `load_products(products_path, rating_variance_path, engine)` — Load products with rating_variance merged
+   - `load_reviews(df, engine)` — Load individual reviews
    - `get_engine(env)` — Get connection based on environment
 
    **vector_loader.py:**
-   - `generate_embeddings(texts, model)` — Create embeddings
+   - `generate_embeddings(texts, model)` — Create embeddings from product descriptions
    - `load_embeddings(product_ids, embeddings, engine)` — Store in pgvector
 
-5. **Environment-based configuration**
+6. **Environment-based configuration**
    ```yaml
    # config/database.yaml
    development:
@@ -1039,7 +1069,7 @@ Load processed data and feature embeddings into PostgreSQL (relational) and pgve
      database: savvio_dev
      user: ${DB_USER}
      password: ${DB_PASSWORD}
-   
+
    production:
      host: /cloudsql/project:region:instance
      port: 5432
@@ -1048,10 +1078,10 @@ Load processed data and feature embeddings into PostgreSQL (relational) and pgve
      password: ${DB_PASSWORD}
    ```
 
-6. **Load data**
+7. **Load data**
    - Truncate existing data (or upsert strategy)
-   - Load financial profiles
-   - Load products
+   - Load financial profiles (with pre-computed features)
+   - Load products (with rating_variance merged)
    - Load reviews
    - Generate and load embeddings
 
@@ -1066,10 +1096,22 @@ Load processed data and feature embeddings into PostgreSQL (relational) and pgve
 
 ### Airflow Integration
 ```python
-load_to_postgres = PythonOperator(
-    task_id='load_to_postgres',
-    python_callable=postgres_loader.load_all,
-    op_kwargs={'env': '{{ var.value.environment }}'},
+load_financial = PythonOperator(
+    task_id='load_financial_profiles',
+    python_callable=postgres_loader.load_financial_profiles,
+    dag=dag
+)
+
+load_products = PythonOperator(
+    task_id='load_products',
+    python_callable=postgres_loader.load_products,
+    op_kwargs={'rating_variance_path': 'data/features/product_rating_variance.csv'},
+    dag=dag
+)
+
+load_reviews = PythonOperator(
+    task_id='load_reviews',
+    python_callable=postgres_loader.load_reviews,
     dag=dag
 )
 
@@ -1079,62 +1121,118 @@ generate_embeddings = PythonOperator(
     dag=dag
 )
 
-load_to_postgres >> generate_embeddings
+[load_financial, load_products, load_reviews] >> generate_embeddings
 ```
-
 ---
 
 ## Phase 15: Bias Detection & Mitigation
 
 ### Objective
-Detect and mitigate bias in the FEATURE data through slicing and analysis across subgroups. This happens on features because features are what the model uses for decisions.
+Detect and mitigate data representation bias across financial profiles and product/review data. The goal is to ensure the pipeline produces balanced, representative data so downstream models and the decision engine don't systematically disadvantage any subgroup.
 
-### Why After Feature Engineering?
+### Why Two Separate Tracks?
 
-| Check Point | What You'd Find | Why Features is Better |
-|-------------|-----------------|----------------------|
-| Raw Data | Demographic imbalance | Good to know, but... |
-| Features | **Bias in decision inputs** | This is what affects recommendations |
+Each data track is analyzed independently because they represent fundamentally different populations (users vs. products) and carry different bias risks:
 
-Example: Raw data might have equal income representation, but `affordability_score` feature might systematically disadvantage certain groups.
+| Track | Population | Bias Risk |
+|-------|-----------|-----------|
+| Financial | User profiles | Underrepresentation of financially vulnerable users — the people SavVio is designed to help most |
+| Product/Review | Products & reviews | Skewed category coverage, price range gaps, or unreliable quality signals for low-review products |
+
+> **Note:** Decision outcome bias (e.g., does the Green/Yellow/Red recommendation system unfairly penalize low-income users?) is tested in Phase 3: Model Development, once the Deterministic Financial Logic Engine and affordability calculations exist. The data pipeline focuses on **data representation bias** only.
 
 ### Steps
 
-1. **Identify slicing dimensions**
+1. **Financial data — Slice analysis**
 
-   | Slice Dimension | Groups | Why It Matters |
-   |-----------------|--------|----------------|
-   | Income bracket | Low (<$3k), Medium ($3k-$7k), High (>$7k) | Fair across income levels |
-   | Debt-to-income | Low (<0.2), Medium (0.2-0.4), High (>0.4) | Don't penalize debt unfairly |
-   | Expense burden | Low (<0.5), Medium (0.5-0.8), High (>0.8) | Fair regardless of spending |
-   | Product category | Electronics, Clothing, Home, etc. | No category bias |
-   | Rating distribution | Low-rated, Medium-rated, High-rated products | Reviews don't skew bias |
+   | Slice Dimension | Groups | What to Check |
+   |-----------------|--------|---------------|
+   | Income bracket | Low (<$3k), Medium ($3k-$7k), High (>$7k) | Sufficient low-income representation? |
+   | Debt-to-income ratio | Low (<0.2), Medium (0.2-0.4), High (>0.4) | Balanced coverage across debt levels? |
+   | Expense burden | Low (<0.5), Medium (0.5-0.8), High (>0.8) | Are high-burden users underrepresented? |
+   | Emergency fund months | Critical (<1), Low (1-3), Healthy (3+) | Enough financially stressed profiles? |
 
-2. **Perform slice analysis**
-   - Count records per slice
-   - Compare feature distributions across slices
-   - Identify underrepresented groups
+   **Analysis:**
+   - Count records per slice — flag slices with <10% of total records
+   - Compare feature distributions across slices (mean, median, std of each financial metric)
+   - Identify if any slice has significantly different feature distributions that could bias model training
+
+   **Why this matters for SavVio:**
+   If the financial data skews toward high-income, healthy profiles, the model won't learn effective decision boundaries for users who are financially vulnerable. These are the users most likely to benefit from a "Red Light" recommendation, and the system must work well for them.
+
+2. **Product/review data — Slice analysis**
+
+   | Slice Dimension | Groups | What to Check |
+   |-----------------|--------|---------------|
+   | Product category | Electronics, Clothing, Home, etc. | Any category with <5% of products? |
+   | Price range | Budget (<$25), Mid ($25-$200), Premium (>$200) | Balanced price representation? |
+   | Average rating | Low (<3), Medium (3-4), High (>4) | Are low-rated products underrepresented? |
+   | Review volume (rating_number) | Few (<10), Some (10-100), Many (>100) | Do low-review products lack reliable quality signals? |
+   | Rating variance | Low (<0.5), Medium (0.5-1.0), High (>1.0) | Are polarizing products represented? |
+
+   **Analysis:**
+   - Count products per slice — flag underrepresented groups
+   - Check if `rating_variance` is meaningful for low-review products (variance from 2 reviews is unreliable)
+   - Verify price distribution covers the range users are likely to query about
+
+   **Why this matters for SavVio:**
+   If the product data is dominated by one category (e.g., electronics), the RAG retrieval and quality signals will perform poorly for other categories. If budget products are underrepresented, the system may lack good alternatives to recommend when giving a "Yellow Light."
 
 3. **Evaluate for bias**
-   - Would low-income users get unfair "Red Light" recommendations?
-   - Are certain categories systematically scored lower?
-   - Do review-based features create bias?
+   - Are any critical slices underrepresented (<10% of records)?
+   - Would the data gaps cause the system to perform worse for specific user groups?
+   - Are there product categories where quality signals (rating_variance, avg_rating) are unreliable due to low review counts?
 
 4. **Implement mitigation if needed**
-   - Re-sample underrepresented groups
-   - Adjust feature calculations
-   - Document trade-offs
+
+   **Financial data:**
+   - Oversample underrepresented income brackets or debt levels
+   - Generate synthetic profiles for underrepresented slices
+   - Document which slices are underrepresented and the expected impact
+
+   **Product/review data:**
+   - Flag products with fewer than N reviews as having low-confidence quality signals
+   - Ensure category distribution covers common purchase types
+   - Document category gaps and their impact on recommendations
 
 5. **Document analysis**
    - `docs/bias_analysis_report.md`
+   - Include: slice counts, distribution comparisons, identified gaps, mitigation steps taken, trade-offs made
 
 ### Tools & Alternatives
 
 | Tool | Purpose | Alternative | When to Use Alternative |
 |------|---------|-------------|------------------------|
-| Fairlearn | Bias metrics | AIF360 | More comprehensive |
-| Pandas groupby | Manual slicing | Custom Python | Full control |
-| SliceFinder | Auto slice discovery | — | Exploratory |
+| Fairlearn | Bias metrics & analysis | AIF360 | More comprehensive fairness toolkit |
+| Pandas groupby | Manual slice analysis | Custom Python | Full control |
+| SliceFinder | Automatic slice discovery | — | Exploratory analysis |
+| Matplotlib/Seaborn | Distribution visualization | Plotly | Interactive charts |
+
+### Airflow Integration
+```python
+bias_financial = PythonOperator(
+    task_id='bias_analysis_financial',
+    python_callable=bias.analyze_financial_bias,
+    dag=dag
+)
+
+bias_products = PythonOperator(
+    task_id='bias_analysis_products',
+    python_callable=bias.analyze_product_bias,
+    dag=dag
+)
+
+# Run in parallel since they analyze independent tracks.
+[bias_financial, bias_products] >> complete
+```
+
+### Future: Decision Outcome Bias (Phase 3)
+Once the Deterministic Financial Logic Engine is built, a separate bias analysis should test:
+- Do Green/Yellow/Red recommendations distribute fairly across income brackets?
+- Does the affordability score systematically penalize certain financial profiles?
+- Are certain product categories more likely to receive Red Light recommendations regardless of user finances?
+
+This analysis requires the full decision pipeline and belongs in the model development phase, not the data pipeline.
 
 ---
 
