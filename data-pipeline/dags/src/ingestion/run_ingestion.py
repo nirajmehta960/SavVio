@@ -5,10 +5,14 @@ This is the main entry point for the data ingestion step in the Airflow DAG.
 """
 
 import logging
+import sys
+from pathlib import Path
 from typing import Tuple
 import pandas as pd
 
-from ingestion.config import (
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from config import (
     ENVIRONMENT,
     DATA_SOURCE,
     GCS_BUCKET_NAME,
