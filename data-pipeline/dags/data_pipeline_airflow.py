@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-import pendulum
+import sys
+from pathlib import Path
+
 from datetime import datetime, timedelta
 from airflow import DAG
 from airflow.providers.standard.operators.bash import BashOperator
@@ -9,12 +11,13 @@ from airflow.providers.smtp.operators.smtp import EmailOperator
 from airflow.providers.standard.operators.trigger_dagrun import TriggerDagRunOperator
 from airflow.task.trigger_rule import TriggerRule
 
+
 # ---------- Default args ----------
 default_args = {
     'owner': 'Murtaza Nipplewala',
     'start_date': datetime(2026, 2, 17),
-    'retries': 2, 
-    'retry_delay': timedelta(minutes=0.3), 
+    'retries': 2,
+    'retry_delay': timedelta(minutes=0.3),
     'email': 'murtaza.sn786@gmail.com',
     'email_on_failure': True,
     'email_on_retry': False
@@ -37,35 +40,37 @@ dag = DAG(
 send_email = EmailOperator(
     task_id="send_email",
     to="murtaza.sn786@gmail.com",
-    subject="Notification from Airflow",
-    html_content="<p>This is a notification email sent from Airflow.</p>",
+    subject="Notification from Data Pipeline Airflow",
+    html_content="<p>This is a notification email sent from Data Pipeline Airflow.</p>",
     dag=dag,
 )
 
 #----------------------------------------------------
-# Airflow DAG for Data Ingestion
+# Data Ingestion  (runs in PARALLEL)
 #----------------------------------------------------
 
 ingest_financial = PythonOperator(
     task_id='ingest_financial_data',
-    python_callable=financial.load_financial_data,
-    dag=dag
+    python_callable=ingest_financial_task,
+    dag=dag,
 )
 
 ingest_products = PythonOperator(
     task_id='ingest_product_data',
-    python_callable=product.load_product_data,
-    dag=dag
+    python_callable=ingest_product_task,
+    dag=dag,
 )
 
 ingest_reviews = PythonOperator(
     task_id='ingest_review_data',
-    python_callable=review.load_review_data,
-    dag=dag
+    python_callable=ingest_review_task,
+    dag=dag,
 )
 
 # Parallel execution
-[ingest_financial, ingest_products, ingest_reviews] >> next_task
+[ingest_financial, ingest_products, ingest_reviews] #>> next_task
+# OR
+
 
 
 #----------------------------------------------------

@@ -217,41 +217,77 @@ def run_ingestion() -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
         raise
 
 
-def run_ingestion_task(**context):
-    """
-    Airflow-compatible task function.
-    Uses XCom to pass data to downstream tasks.
-    
-    Args:
-        **context: Airflow context (includes ti, ds, etc.)
-    """
-    try:
-        # Run ingestion
-        financial_df, product_df, review_df = run_ingestion()
-        
-        # Push data shapes to XCom for monitoring
-        task_instance = context['ti']
-        task_instance.xcom_push(key='financial_shape', value=financial_df.shape)
-        task_instance.xcom_push(key='product_shape', value=product_df.shape)
-        task_instance.xcom_push(key='review_shape', value=review_df.shape)
-        
-        # Push file paths to XCom for downstream tasks
-        task_instance.xcom_push(key='financial_path', value=FINANCIAL_RAW_PATH)
-        task_instance.xcom_push(key='product_path', value=PRODUCT_RAW_PATH)
-        task_instance.xcom_push(key='review_path', value=REVIEW_RAW_PATH)
-        
-        logger.info("Data paths pushed to XCom for downstream tasks")
-        
-        return {
-            'financial_records': len(financial_df),
-            'product_records': len(product_df),
-            'review_records': len(review_df),
-            'status': 'success'
-        }
-        
-    except Exception as e:
-        logger.error(f"Ingestion task failed: {e}")
-        raise
+# ──────────────────────────────────────────────────────────────
+# Individual Airflow task functions (for parallel ingestion)
+# ──────────────────────────────────────────────────────────────
+
+def ingest_financial_task(**context):
+    """Airflow task: ingest financial data only."""
+    logger.info("Ingesting financial data...")
+    if DATA_SOURCE.lower() == 'gcs':
+        from ingestion.gcs_loader import load_financial_data
+        df = load_financial_data(
+            bucket_name=GCS_BUCKET_NAME, blob_name=FINANCIAL_BLOB,
+            destination_path=FINANCIAL_RAW_PATH,
+            credentials_path=GCP_CREDENTIALS_PATH, project_id=GCP_PROJECT_ID,
+        )
+    else:
+        from ingestion.api_loader import load_financial_data
+        df = load_financial_data(
+            api_base_url=API_BASE_URL,
+            endpoint=FINANCIAL_API_ENDPOINT.replace(API_BASE_URL, ''),
+            destination_path=FINANCIAL_RAW_PATH,
+            api_key=API_KEY, timeout=API_TIMEOUT,
+        )
+    context['ti'].xcom_push(key='financial_path', value=FINANCIAL_RAW_PATH)
+    logger.info(f"Financial ingestion complete: {len(df)} records")
+    return {'records': len(df), 'status': 'success'}
+
+
+def ingest_product_task(**context):
+    """Airflow task: ingest product data only."""
+    logger.info("Ingesting product data...")
+    if DATA_SOURCE.lower() == 'gcs':
+        from ingestion.gcs_loader import load_product_data
+        df = load_product_data(
+            bucket_name=GCS_BUCKET_NAME, blob_name=PRODUCT_BLOB,
+            destination_path=PRODUCT_RAW_PATH,
+            credentials_path=GCP_CREDENTIALS_PATH, project_id=GCP_PROJECT_ID,
+        )
+    else:
+        from ingestion.api_loader import load_product_data
+        df = load_product_data(
+            api_base_url=API_BASE_URL,
+            endpoint=PRODUCT_API_ENDPOINT.replace(API_BASE_URL, ''),
+            destination_path=PRODUCT_RAW_PATH,
+            api_key=API_KEY, timeout=API_TIMEOUT,
+        )
+    context['ti'].xcom_push(key='product_path', value=PRODUCT_RAW_PATH)
+    logger.info(f"Product ingestion complete: {len(df)} records")
+    return {'records': len(df), 'status': 'success'}
+
+
+def ingest_review_task(**context):
+    """Airflow task: ingest review data only."""
+    logger.info("Ingesting review data...")
+    if DATA_SOURCE.lower() == 'gcs':
+        from ingestion.gcs_loader import load_review_data
+        df = load_review_data(
+            bucket_name=GCS_BUCKET_NAME, blob_name=REVIEW_BLOB,
+            destination_path=REVIEW_RAW_PATH,
+            credentials_path=GCP_CREDENTIALS_PATH, project_id=GCP_PROJECT_ID,
+        )
+    else:
+        from ingestion.api_loader import load_review_data
+        df = load_review_data(
+            api_base_url=API_BASE_URL,
+            endpoint=REVIEW_API_ENDPOINT.replace(API_BASE_URL, ''),
+            destination_path=REVIEW_RAW_PATH,
+            api_key=API_KEY, timeout=API_TIMEOUT,
+        )
+    context['ti'].xcom_push(key='review_path', value=REVIEW_RAW_PATH)
+    logger.info(f"Review ingestion complete: {len(df)} records")
+    return {'records': len(df), 'status': 'success'}
 
 
 # Standalone execution for testing
