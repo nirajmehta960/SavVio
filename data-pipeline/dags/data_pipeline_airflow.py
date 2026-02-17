@@ -42,11 +42,45 @@ dag = DAG(
 
 # -------------------- TASKS ------------------------
 
-send_email = EmailOperator(
-    task_id="send_email",
+# Error Email Operators
+
+error_at_ingestion = EmailOperator(
+    task_id="send_email_at_ingestion_error",
     to="murtaza.sn786@gmail.com",
-    subject="Notification from Data Pipeline Airflow",
-    html_content="<p>This is a notification email sent from Data Pipeline Airflow.</p>",
+    subject="SavVio Data Pipeline Airflow - Error at Ingestion",
+    html_content="<p>Something went wrong at Ingestion stage.</p>",
+    dag=dag,
+)
+
+error_at_preprocessing = EmailOperator(
+    task_id="send_email_at_preprocessing_error",
+    to="murtaza.sn786@gmail.com",
+    subject="SavVio Data Pipeline Airflow - Error at Preprocessing",
+    html_content="<p>Something went wrong at Preprocessing stage.</p>",
+    dag=dag,
+)
+
+error_at_feature_engineering = EmailOperator(
+    task_id="send_email_at_feature_engineering_error",
+    to="murtaza.sn786@gmail.com",
+    subject="SavVio Data Pipeline Airflow - Error at Feature Engineering",
+    html_content="<p>Something went wrong at Feature Engineering stage.</p>",
+    dag=dag,
+)
+
+error_at_DB_loading = EmailOperator(
+    task_id="send_email_at_DB_loading_error",
+    to="murtaza.sn786@gmail.com",
+    subject="SavVio Data Pipeline Airflow - Error at DB Loading",
+    html_content="<p>Something went wrong at DB Loading stage.</p>",
+    dag=dag,
+)
+
+error_at_bias_analysis = EmailOperator(
+    task_id="send_email_at_bias_analysis_error",
+    to="murtaza.sn786@gmail.com",
+    subject="SavVio Data Pipeline Airflow - Error at Bias Analysis",
+    html_content="<p>Something went wrong at Bias Analysis stage.</p>",
     dag=dag,
 )
 
