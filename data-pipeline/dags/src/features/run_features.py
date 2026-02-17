@@ -7,7 +7,7 @@ Runs the complete feature engineering pipeline:
 3. Affordability Feature Engineering
 
 Usage:
-    python3 features-scripts/run_features.py
+    python3 src/features/run_features.py
 """
 
 import sys
@@ -16,11 +16,11 @@ import logging
 import argparse
 
 # Add current script directory to import path.
-sys.path.append(os.path.abspath(os.path.dirname(__file__)))
+sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 
-from features.financial_features import run_financial_features
-from features.review_features import run_review_features
-from features.utils import setup_logging
+from financial_features import run_financial_features
+from review_features import run_review_features
+from utils import setup_logging
 
 # Configure module logging.
 setup_logging()
@@ -68,22 +68,34 @@ def main():
         except Exception as e:
             logger.error(f"Review feature engineering failed: {e}")
 
-    # # Step 3: Affordability features - moved to Decision API/model pipeline for on-demand computation.
-    # if not args.skip_affordability:
-    #     logger.info("--- Starting Affordability Feature Engineering ---")
-    #     # Affordability requires financial + review feature outputs and product input data.
-        
-    #     # Validate required upstream outputs exist.
-    #     if not (os.path.exists(REV_OUTPUT) and os.path.exists(FIN_OUTPUT)):
-    #         logger.warning("Skipping affordability features because previous outputs are missing. Run full pipeline.")
-    #     else:
-    #         try:
-    #             run_affordability_features(REV_OUTPUT, FIN_OUTPUT, PROD_INPUT, AFF_OUTPUT)
-    #             logger.info("Affordability features complete.")
-    #         except Exception as e:
-    #             logger.error(f"Affordability feature engineering failed: {e}")
-
     logger.info("Feature engineering pipeline finished.")
+
+
+# ---------- Airflow task wrappers ----------
+
+def feature_financial_task(**context):
+    """Airflow task: run financial feature engineering."""
+    logger.info(">>> Running Financial Feature Engineering...")
+    BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    DATA_DIR = os.path.join(BASE_DIR, "data")
+    run_financial_features(
+        input_path=os.path.join(DATA_DIR, "processed/financial_preprocessed.csv"),
+        output_path=os.path.join(DATA_DIR, "features/financial_featured.csv"),
+    )
+    logger.info(">>> Financial Feature Engineering: SUCCESS")
+
+
+def feature_review_task(**context):
+    """Airflow task: run review feature engineering."""
+    logger.info(">>> Running Review Feature Engineering...")
+    BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    DATA_DIR = os.path.join(BASE_DIR, "data")
+    run_review_features(
+        reviews_path=os.path.join(DATA_DIR, "processed/review_preprocessed.jsonl"),
+        output_path=os.path.join(DATA_DIR, "features/product_rating_variance.csv"),
+    )
+    logger.info(">>> Review Feature Engineering: SUCCESS")
+
 
 if __name__ == "__main__":
     main()
