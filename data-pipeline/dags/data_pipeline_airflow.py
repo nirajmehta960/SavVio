@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pendulum
+from datetime import datetime, timedelta
 from airflow import DAG
 from airflow.providers.standard.operators.bash import BashOperator
 from airflow.providers.standard.operators.python import PythonOperator, BranchPythonOperator
@@ -10,19 +11,24 @@ from airflow.task.trigger_rule import TriggerRule
 
 # ---------- Default args ----------
 default_args = {
-    "start_date": pendulum.datetime(2024, 1, 1, tz="UTC"),
-    "retries": 0,
+    'owner': 'Murtaza Nipplewala',
+    'start_date': datetime(2026, 2, 17),
+    'retries': 2, 
+    'retry_delay': timedelta(minutes=0.3), 
+    'email': 'murtaza.sn786@gmail.com',
+    'email_on_failure': True,
+    'email_on_retry': False
 }
 
 # ---------- DAG ----------
 dag = DAG(
-    dag_id="Airflow_Lab2",
+    dag_id="Data_pipeline_airflow",
     default_args=default_args,
-    description="Airflow-Lab2 DAG Description",
+    description="Data Pipeline Airflow DAG",
     schedule="@daily",
     catchup=False,
     tags=["example"],
-    owner_links={"Murtaza Nipplewala": "https://www.linkedin.com/in/murtazan/"},
+    owner_links={"Murtaza Nipplewala": "https://github.com/MurtazaNipplewala/SavVio"},
     max_active_runs=1,
 )
 
