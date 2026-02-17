@@ -1,6 +1,0 @@
-{
-    "extraPaths": [
-        "data-pipeline/dags",
-        "data-pipeline/dags/src"
-    ]
-}
