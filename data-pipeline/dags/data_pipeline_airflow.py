@@ -4,6 +4,7 @@ import sys
 from pathlib import Path
 from src.ingestion.run_ingestion import ingest_financial_task, ingest_product_task, ingest_review_task
 from src.preprocess.run_preprocessing import preprocess_financial_task, preprocess_product_task, preprocess_review_task
+from src.features.run_features import feature_financial_task, feature_review_task
 
 
 from datetime import datetime, timedelta
@@ -72,7 +73,7 @@ ingest_reviews = PythonOperator(
 )
 
 #----------------------------------------------------
-# Data Preprocessing  (runs in PARALLEL, after ingestion)
+# Data Preprocessing  (runs in PARALLEL)
 #----------------------------------------------------
 
 preprocess_financial = PythonOperator(
@@ -95,6 +96,25 @@ preprocess_reviews = PythonOperator(
 
 # Ingestion fan-in → Preprocessing (all three run in parallel)
 [ingest_financial, ingest_products, ingest_reviews] >> [preprocess_financial, preprocess_products, preprocess_reviews]
+
+#----------------------------------------------------
+# Feature Engineering  (runs in PARALLEL, after preprocessing)
+#----------------------------------------------------
+
+feature_financial = PythonOperator(
+    task_id='feature_financial_data',
+    python_callable=feature_financial_task,
+    dag=dag,
+)
+
+feature_reviews = PythonOperator(
+    task_id='feature_review_data',
+    python_callable=feature_review_task,
+    dag=dag,
+)
+
+# Preprocessing fan-in → Feature Engineering (both run in parallel)
+[preprocess_financial, preprocess_products, preprocess_reviews] >> [feature_financial, feature_reviews]
 
 
 
@@ -126,6 +146,9 @@ generate_embeddings = PythonOperator(
     python_callable=vector_loader.generate_and_load,
     dag=dag
 )
+
+# Feature Engineering fan-in → Loading
+[feature_financial, feature_reviews] >> [load_financial, load_products, load_reviews]
 
 [load_financial, load_products, load_reviews] >> generate_embeddings
 
