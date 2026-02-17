@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+from src.ingestion.run_ingestion import ingest_financial_task, ingest_product_task, ingest_review_task
+from src.preprocess.run_preprocessing import preprocess_financial_task, preprocess_product_task, preprocess_review_task
+
 
 from datetime import datetime, timedelta
 from airflow import DAG
@@ -10,6 +13,7 @@ from airflow.providers.standard.operators.python import PythonOperator, BranchPy
 from airflow.providers.smtp.operators.smtp import EmailOperator
 from airflow.providers.standard.operators.trigger_dagrun import TriggerDagRunOperator
 from airflow.task.trigger_rule import TriggerRule
+
 
 
 # ---------- Default args ----------
@@ -67,9 +71,30 @@ ingest_reviews = PythonOperator(
     dag=dag,
 )
 
-# Parallel execution
-[ingest_financial, ingest_products, ingest_reviews] #>> next_task
-# OR
+#----------------------------------------------------
+# Data Preprocessing  (runs in PARALLEL, after ingestion)
+#----------------------------------------------------
+
+preprocess_financial = PythonOperator(
+    task_id='preprocess_financial_data',
+    python_callable=preprocess_financial_task,
+    dag=dag,
+)
+
+preprocess_products = PythonOperator(
+    task_id='preprocess_product_data',
+    python_callable=preprocess_product_task,
+    dag=dag,
+)
+
+preprocess_reviews = PythonOperator(
+    task_id='preprocess_review_data',
+    python_callable=preprocess_review_task,
+    dag=dag,
+)
+
+# Ingestion fan-in → Preprocessing (all three run in parallel)
+[ingest_financial, ingest_products, ingest_reviews] >> [preprocess_financial, preprocess_products, preprocess_reviews]
 
 
 

@@ -8,16 +8,7 @@ import logging
 from typing import Tuple
 import pandas as pd
 
-# Import configuration
-import sys
-from pathlib import Path
-
-# Add current directory to path so imports work when running directly
-current_dir = Path(__file__).resolve().parent
-if str(current_dir) not in sys.path:
-    sys.path.insert(0, str(current_dir))
-
-from config import (
+from ingestion.config import (
     ENVIRONMENT,
     DATA_SOURCE,
     GCS_BUCKET_NAME,
