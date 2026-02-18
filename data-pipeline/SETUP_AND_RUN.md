@@ -1,139 +1,209 @@
 # SavVio Data Pipeline Setup & Execution Guide
 
-This guide provides step-by-step instructions for setting up the environment, running data ingestion, executing preprocessing pipelines, and managing data versioning with DVC.
+This guide is the current team runbook for local execution of ingestion, preprocessing,
+feature engineering, and the validation/anomaly flow.
 
-> **Note:** This is a temporary guide for the development team. These instructions will be merged into the main `README.md` upon pipeline completion.
+> Note: Keep this file aligned with `dags/src/*` entrypoints. Merge into `README.md` when stable.
 
 ---
 
 ## 1. Environment Setup
 
 ### Prerequisites
+
 - Python 3.10+
-- `pip` or `uv` (recommended for speed)
-- Google Cloud SDK (if interacting with GCS directly)
+- `pip` (or `uv`)
+- Google Cloud credentials (if using GCS source)
 
 ### Installation
-1. Navigate to the pipeline directory:
+
+1. Go to the pipeline folder:
+
    ```bash
    cd data-pipeline
    ```
 
 2. Create and activate a virtual environment:
+
    ```bash
    python3 -m venv .venv
    source .venv/bin/activate
    ```
 
 3. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-   *(If `requirements.txt` is missing, ensure you have pandas, google-cloud-storage, dvc, dvc-gcs, python-dotenv installed)*
 
-4. Configure Environment Variables:
-   - Create a `.env` file in the project root folder
-   - Add the following configurations:
-     ```env
-     # Google Cloud Configuration
-     GCP_PROJECT_ID=your-project-id
-     GCS_BUCKET_NAME=savvio-data-bucket
-     GCP_CREDENTIALS_PATH=/path/to/your/service-account-key.json
-     
-     # Pipeline Config
-     DATA_DIR=data
-     LOG_LEVEL=INFO
-     ```
+   ```bash
+   pip install -r data-requirements.txt
+   ```
+
+4. Use a single `.env` file at the repository root (`Purchase-Guardrail-Agent/.env`):
+
+   ```env
+   GCP_PROJECT_ID=your-project-id
+   GCS_BUCKET_NAME=savvio-data-bucket
+   GCP_CREDENTIALS_PATH=/path/to/service-account.json
+
+   DATA_DIR=data
+   LOG_LEVEL=INFO
+   ```
 
 ---
 
-## 2. Data Ingestion
+## 2. Execution Order (Current)
 
-The ingestion script downloads raw data from Google Cloud Storage (or API in prod) to `data/raw/`.
+Run all commands from `data-pipeline/`.
 
-**Run Ingestion:**
+### 2.1 Ingestion
+
 ```bash
-# Ensure you are in data-pipeline directory
-python3 ingestion-scripts/run_ingestion.py
+python3 dags/src/ingestion/run_ingestion.py
 ```
 
-**What this does:**
-- Checks `data/raw/` for existing files.
-- Downloads `financial_data.csv`, `product_data.jsonl`, and `review_data.jsonl`.
-- Verifies file integrity.
+Output:
 
----
+- `data/raw/financial_data.csv`
+- `data/raw/product_data.jsonl`
+- `data/raw/review_data.jsonl`
 
-## 3. Data Preprocessing
+### 2.2 Preprocessing
 
-We have a unified orchestrator script that runs all preprocessing tasks in the correct order.
-
-**Run All Preprocessing:**
 ```bash
-python3 scripts/run_preprocessing.py
+python3 dags/src/preprocess/run_preprocessing.py
 ```
 
-**Individual Steps (if needed for debugging):**
-- **Financial Data:** `python3 -m scripts.preprocess.financial`
-- **Product Data:** `python3 -m scripts.preprocess.product`
-- **Review Data:** `python3 -m scripts.preprocess.review`
+Output:
 
-**Outputs:**
-- Processed files are saved to `data/processed/`.
-- Logs are printed to the console (and saved to `logs/` if configured).
+- `data/processed/financial_preprocessed.csv`
+- `data/processed/product_preprocessed.jsonl`
+- `data/processed/review_preprocessed.jsonl`
 
----
+### 2.3 Feature Engineering
 
-## 4. Data Versioning (DVC)
+```bash
+python3 dags/src/features/run_features.py
+```
 
-We use DVC (Data Version Control) to version our raw and processed datasets.
+Output:
 
-### Basic Workflow
+- `data/features/financial_featured.csv`
+- `data/features/product_rating_variance.csv`
 
-1. **Track New/Modified Data:**
-   After running ingestion or preprocessing, if data has changed:
-   ```bash
-   # Add processed data folder to DVC
-   dvc add data/processed
-   
-   # Add raw data (only if you ingested new raw data)
-   dvc add data/raw
-   ```
+Notes:
 
-2. **Commit DVC Changes to Git:**
-   DVC creates `.dvc` files that point to the actual data. These must be committed to Git.
-   ```bash
-   git add data/processed.dvc data/raw.dvc
-   git commit -m "Update processed data artifacts"
-   ```
+- Product data currently stays at `data/processed/product_preprocessed.jsonl` for DB import.
+- Feature engineering is currently applied to financial and review datasets.
 
-3. **Push Data to Remote Storage (GCS):**
-   This uploads the actual large data files to the shared GCS bucket.
-   ```bash
-   dvc push
-   ```
+### 2.4 Validation + Anomaly Detection
 
-4. **Pull Data (for other team members):**
-   To get the latest data versions committed by teammates:
-   ```bash
-   git pull origin main
-   dvc pull
-   ```
+```bash
+python3 dags/src/validation/run_validation.py all
+```
 
-### Troubleshooting DVC
-- **Lock file error?**
-  Run `rm -f .dvc/tmp/lock` if DVC complains about a lock file after a crash.
-- **Cache error?**
-  Run `dvc doctor` to diagnose issues.
+Stage order:
+
+1. `raw` (schema/rule checks)
+2. `raw_anomalies` (Tier 1, INFO-only monitoring)
+3. `processed` (post-transform checks)
+4. `features` (feature checks + formula spot checks)
+5. `anomalies` (Tier 2, pre-DB anomaly checks)
+
+To run a single stage:
+
+```bash
+python3 dags/src/validation/run_validation.py raw
+python3 dags/src/validation/run_validation.py raw_anomalies
+python3 dags/src/validation/run_validation.py processed
+python3 dags/src/validation/run_validation.py features
+python3 dags/src/validation/run_validation.py anomalies
+```
 
 ---
 
-## 5. Pipeline Summary
+## 3. Validation Outputs
 
-| Step | Script / Command | output |
-|------|------------------|--------|
-| **1. Ingest** | `python3 ingestion-scripts/run_ingestion.py` | `data/raw/*` |
-| **2. Preprocess** | `python3 scripts/run_preprocessing.py` | `data/processed/*` |
-| **3. Version** | `dvc add data/processed && dvc push` | `gs://savvio-data-bucket/dvc-store` |
+### Reports
+
+Validation reports are written to:
+
+- `logs/validation/`
+
+Examples:
+
+- `raw_validation_*.json`
+- `raw_anomaly_validation_*.json`
+- `processed_validation_*.json`
+- `features_validation_*.json`
+- `anomaly_validation_*.json`
+
+### Quarantine
+
+Detected anomaly rows are written to:
+
+- `data/quarantine/`
 
 ---
+
+## 4. Two-Tier Anomaly Strategy
+
+### Tier 1 (`raw_anomalies`)
+
+- Input: `data/raw/financial_data.csv`
+- Scope: financial data only (income, savings, expenses)
+- Purpose: early visibility and trend monitoring
+- Severity behavior: INFO-only, does not block pipeline
+
+### Tier 2 (`anomalies`)
+
+- Input: `data/features/financial_featured.csv`
+- Scope: financial data only (core columns + engineered features)
+- Purpose: anomaly checks on featured financial data before DB load
+- Severity behavior: WARNING/CRITICAL drive `ALERT`/`HALT` actions
+
+> Product and review data quality is covered by raw/processed validators.
+> Anomaly detection is scoped to financial data where outliers have the
+> highest impact on the agent's purchase guardrail decisions.
+
+---
+
+## 5. DVC Workflow (Raw / Processed / Features)
+
+After data changes:
+
+```bash
+dvc add data/raw
+dvc add data/processed
+dvc add data/features
+```
+
+Commit metadata and push data:
+
+```bash
+git add .
+git commit -m "Update data artifacts"
+dvc push
+```
+
+For teammates:
+
+```bash
+git pull origin main
+dvc pull
+```
+
+---
+
+## 6. Quick Command List
+
+```bash
+# 1) Ingestion
+python3 dags/src/ingestion/run_ingestion.py
+
+# 2) Preprocessing
+python3 dags/src/preprocess/run_preprocessing.py
+
+# 3) Feature engineering
+python3 dags/src/features/run_features.py
+
+# 4) Full validation pipeline
+python3 dags/src/validation/run_validation.py all
+```

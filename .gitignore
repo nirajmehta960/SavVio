@@ -26,6 +26,7 @@ venv/
 env/
 ENV/
 .venv
+.venv-validation/
 
 # IDEs
 .vscode/
@@ -56,6 +57,7 @@ data-pipeline/data/validated/*
 !data-pipeline/data/raw/.gitkeep
 !data-pipeline/data/processed/.gitkeep
 !data-pipeline/data/validated/.gitkeep
+data-pipeline/dags/data/quarantine/
 
 # Model artifacts (tracked with DVC or model registry)
 model-development/models/*

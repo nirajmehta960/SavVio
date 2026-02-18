@@ -5,6 +5,7 @@ from pathlib import Path
 from src.ingestion.run_ingestion import ingest_financial_task, ingest_product_task, ingest_review_task
 from src.preprocess.run_preprocessing import preprocess_financial_task, preprocess_product_task, preprocess_review_task
 from src.features.run_features import feature_financial_task, feature_review_task
+from src.validation.run_validation import validate_raw, validate_processed, validate_features, validate_raw_anomalies, validate_anomalies
 
 
 from datetime import datetime, timedelta
@@ -94,11 +95,38 @@ preprocess_reviews = PythonOperator(
     dag=dag,
 )
 
-# Ingestion fan-in → Preprocessing (all three run in parallel)
-[ingest_financial, ingest_products, ingest_reviews] >> [preprocess_financial, preprocess_products, preprocess_reviews]
+#----------------------------------------------------
+# Raw Data Validation - after ingestion
+#----------------------------------------------------
+
+validate_raw_data = PythonOperator(
+    task_id='validate_raw_data',
+    python_callable=validate_raw,
+    dag=dag,
+)
 
 #----------------------------------------------------
-# Feature Engineering  (runs in PARALLEL, after preprocessing)
+# Raw Anomaly Detection (Tier 1 — light, INFO-only, never halts)
+#----------------------------------------------------
+
+detect_raw_anomalies = PythonOperator(
+    task_id='detect_raw_anomalies',
+    python_callable=validate_raw_anomalies,
+    dag=dag,
+)
+
+#----------------------------------------------------
+# Processed Data Validation - after preprocessing   
+#----------------------------------------------------
+
+validate_processed_data = PythonOperator(
+    task_id='validate_processed_data',
+    python_callable=validate_processed,
+    dag=dag,
+)
+
+#----------------------------------------------------
+# Feature Engineering (runs in PARALLEL, after processed validation)
 #----------------------------------------------------
 
 feature_financial = PythonOperator(
@@ -113,13 +141,31 @@ feature_reviews = PythonOperator(
     dag=dag,
 )
 
-# Preprocessing fan-in → Feature Engineering (both run in parallel)
-[preprocess_financial, preprocess_products, preprocess_reviews] >> [feature_financial, feature_reviews]
+#----------------------------------------------------
+# Anomaly Detection (Tier 2 — full, WARNING/CRITICAL, gates DB load)
+#----------------------------------------------------
 
-
+detect_anomalies = PythonOperator(
+    task_id='detect_anomalies',
+    python_callable=validate_anomalies,
+    dag=dag,
+)
 
 #----------------------------------------------------
-# Airflow DAG for Loading Featured Data into PostgreSQL
+# Feature Validation - after anomaly detection (Tier 2)
+#----------------------------------------------------
+
+validate_features_data = PythonOperator(
+    task_id='validate_features_data',
+    python_callable=validate_features,
+    dag=dag,
+)
+
+# Ingestion → Raw Val → Raw Anomaly (Tier 1, light) → Preprocess → Processed Val → Feature Eng → Anomaly (Tier 2, full) → Feature Val → Loading
+[ingest_financial, ingest_products, ingest_reviews] >> validate_raw_data >> detect_raw_anomalies >> [preprocess_financial, preprocess_products, preprocess_reviews] >> validate_processed_data >> [feature_financial, feature_reviews] >> detect_anomalies >> validate_features_data
+
+#----------------------------------------------------
+# Load Featured Data into PostgreSQL
 #----------------------------------------------------
 
 load_financial = PythonOperator(
@@ -147,13 +193,11 @@ generate_embeddings = PythonOperator(
     dag=dag
 )
 
-# Feature Engineering fan-in → Loading
-[feature_financial, feature_reviews] >> [load_financial, load_products, load_reviews]
-
-[load_financial, load_products, load_reviews] >> generate_embeddings
+# Feature Validation → Loading → Embeddings
+validate_features_data >> [load_financial, load_products, load_reviews] >> generate_embeddings
 
 #----------------------------------------------------
-# Airflow DAG for Bias Analysis
+# Bias Analysis (runs in PARALLEL)
 #----------------------------------------------------
 
 bias_financial = PythonOperator(
@@ -168,5 +212,4 @@ bias_products = PythonOperator(
     dag=dag
 )
 
-# Run in parallel since they analyze independent tracks.
 [bias_financial, bias_products] >> complete

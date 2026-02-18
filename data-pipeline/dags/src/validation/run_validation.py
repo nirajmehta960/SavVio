@@ -1,39 +1,59 @@
-"""
-Unified validation runner for SavVio data pipeline.
+"""Run validation stages for the data pipeline.
 
-Can run any combination of validation stages:
-  - raw       → validates data/raw/ (Phase 6)
-  - processed → validates data/processed/ (Phase 9)
-  - features  → validates data/validated/ (Phase 12)
+Stages:
+    - raw: schema and rule checks for raw inputs
+    - raw_anomalies: tier-1 anomaly scan for raw inputs (monitoring only)
+    - processed: schema and rule checks for processed outputs
+    - features: schema and rule checks for engineered features
+    - anomalies: tier-2 anomaly checks on final DB-load datasets
 
-Each stage returns a ValidationReport with a pipeline_action:
-  CONTINUE  — all checks passed (or only INFO-level failures)
-  ALERT     — WARNING-level failures (send email/Slack, continue)
-  HALT      — CRITICAL failures (stop the pipeline)
-
-Airflow integration:
-  Each stage is a separate PythonOperator task. The callable
-  functions raise AirflowException on HALT to stop downstream tasks.
+Stage outcome is derived from `ValidationReport.summary["pipeline_action"]`:
+    - CONTINUE: no warning/critical failures
+    - ALERT: warning failures present
+    - HALT: critical failures present
 """
 
 import logging
 import sys
+import os
 from pathlib import Path
 
-# Ensure scripts/validate is on the path
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+# Resolve local imports from the validation package.
+current_script_path = Path(__file__).resolve()
+validation_dir = current_script_path.parent          # .../dags/src/validation/
+
+
+def _find_pipeline_root(start: Path) -> Path:
+    """Find data-pipeline root by looking for data/ and config/ directories."""
+    for candidate in [start, *start.parents]:
+        if (candidate / "data").exists() and (candidate / "config").exists():
+            return candidate
+    return current_script_path.parents[3]  # fallback: .../data-pipeline/
+
+
+pipeline_root = _find_pipeline_root(current_script_path.parent)
+
+# Ensure running from data-pipeline root so relative data paths work
+if os.getcwd() != str(pipeline_root):
+    print(f"Changing working directory to: {pipeline_root}")
+    os.chdir(pipeline_root)
+
+# Add 'src/validation' to python path to allow imports
+if str(validation_dir) not in sys.path:
+    sys.path.insert(0, str(validation_dir))
 
 from validation_config import ValidationReport
-from raw_validator import run_raw_validation
-from processed_validator import run_processed_validation
-from feature_validator import run_feature_validation
+from validate.raw_validator import run_raw_validation
+from validate.processed_validator import run_processed_validation
+from validate.feature_validator import run_feature_validation
+from anomaly.anomaly_validator import run_anomaly_validation, run_raw_anomaly_validation
 
 logger = logging.getLogger(__name__)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
+#----------------------------------------------------
 # Airflow-compatible callables
-# ═══════════════════════════════════════════════════════════════════════════
+#----------------------------------------------------
 
 def validate_raw(**kwargs) -> dict:
     """
@@ -64,6 +84,29 @@ def validate_features(**kwargs) -> dict:
     _handle_report(report)
     return report.summary
 
+
+def validate_raw_anomalies(**kwargs) -> dict:
+    """
+    Tier 1: Light anomaly scan on raw financial data. INFO-only — never halts.
+    """
+    report = run_raw_anomaly_validation()
+    _handle_report(report)
+    return report.summary
+
+
+def validate_anomalies(**kwargs) -> dict:
+    """
+    Tier 2: Full anomaly detection on featured financial data.
+    WARNING/CRITICAL thresholds gate the DB load.
+    """
+    report = run_anomaly_validation()
+    _handle_report(report)
+    return report.summary
+
+
+#----------------------------------------------------
+# Report handling and alerts
+#----------------------------------------------------
 
 def _handle_report(report: ValidationReport) -> None:
     """
@@ -122,9 +165,9 @@ def _send_alert(report: ValidationReport) -> None:
     # EmailOperator(to="team@savvio.dev", subject=subject, html_content=body)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# CLI — run all stages or a specific one
-# ═══════════════════════════════════════════════════════════════════════════
+#----------------------------------------------------
+# CLI entrypoint
+#----------------------------------------------------
 
 def main():
     import argparse
@@ -137,34 +180,45 @@ def main():
     parser = argparse.ArgumentParser(description="SavVio Data Validation Runner")
     parser.add_argument(
         "stage",
-        choices=["raw", "processed", "features", "all"],
+        choices=["raw", "processed", "features", "raw_anomalies", "anomalies", "all"],
         help="Which validation stage to run",
     )
     args = parser.parse_args()
 
     exit_code = 0
 
-    if args.stage in ("raw", "all"):
+    STAGE_MAP = {
+        "raw": validate_raw,
+        "raw_anomalies": validate_raw_anomalies,
+        "processed": validate_processed,
+        "features": validate_features,
+        "anomalies": validate_anomalies,
+    }
+
+    if args.stage == "all":
+        stages_to_run = ["raw", "raw_anomalies", "processed", "features", "anomalies"]
+    else:
+        stages_to_run = [args.stage]
+
+    for stage_name in stages_to_run:
+        validator_func = STAGE_MAP.get(stage_name)
+        if not validator_func:
+            logger.error(f"Unknown stage: {stage_name}")
+            continue
+            
         try:
-            validate_raw()
+            logger.info(f"Running validation for stage: {stage_name}")
+            validator_func()
         except RuntimeError:
             exit_code = 1
+            logger.error(f"Validation for stage '{stage_name}' failed critically.")
             if args.stage != "all":
                 sys.exit(1)
-
-    if args.stage in ("processed", "all"):
-        try:
-            validate_processed()
-        except RuntimeError:
+        except Exception as e:
             exit_code = 1
+            logger.exception(f"An unexpected error occurred during validation for stage '{stage_name}': {e}")
             if args.stage != "all":
                 sys.exit(1)
-
-    if args.stage in ("features", "all"):
-        try:
-            validate_features()
-        except RuntimeError:
-            exit_code = 1
 
     sys.exit(exit_code)
 
