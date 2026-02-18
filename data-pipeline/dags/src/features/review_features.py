@@ -13,10 +13,13 @@ This output is merged onto the products table during database loading (Phase 14)
 """
 
 import os
+import sys
 import logging
 import pandas as pd
 
-from features.utils import setup_logging, ensure_output_dir
+sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
+
+from utils import setup_logging, ensure_output_dir
 
 # Configure module logging.
 setup_logging()

@@ -14,10 +14,10 @@ import logging
 import pandas as pd
 import numpy as np
 
-# Add parent script directory to import path.
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
+# Add current script directory to import path.
+sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 
-from features.utils import setup_logging, ensure_output_dir
+from utils import setup_logging, ensure_output_dir
 
 # Configure module logging.
 setup_logging()
