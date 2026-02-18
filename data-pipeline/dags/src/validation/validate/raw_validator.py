@@ -43,9 +43,9 @@ from validation_config import (
 logger = logging.getLogger(__name__)
 
 
-#----------------------------------------------------
+# ═══════════════════════════════════════════════════════════════════════════
 # Helpers
-#----------------------------------------------------
+# ═══════════════════════════════════════════════════════════════════════════
 
 def _load_csv(path: str) -> PandasDataset:
     df = pd.read_csv(path)
@@ -74,9 +74,9 @@ def _check(ge_result: dict, name: str, severity: Severity,
     )
 
 
-#----------------------------------------------------
+# ═══════════════════════════════════════════════════════════════════════════
 # Financial CSV validation
-#----------------------------------------------------
+# ═══════════════════════════════════════════════════════════════════════════
 
 FINANCIAL_REQUIRED_COLS = [
     "user_id", "monthly_income_usd", "monthly_expenses_usd", "savings_usd",
@@ -215,9 +215,9 @@ def validate_financial_raw(path: str, thresholds: dict) -> list[CheckResult]:
     return results
 
 
-#----------------------------------------------------
+# ═══════════════════════════════════════════════════════════════════════════
 # Products JSONL validation
-#----------------------------------------------------
+# ═══════════════════════════════════════════════════════════════════════════
 
 PRODUCT_REQUIRED_COLS = ["parent_asin", "title", "price"]
 PRODUCT_OPTIONAL_COLS = [
@@ -320,9 +320,9 @@ def validate_products_raw(path: str, thresholds: dict) -> list[CheckResult]:
     return results
 
 
-#----------------------------------------------------
+# ═══════════════════════════════════════════════════════════════════════════
 # Reviews JSONL validation
-#----------------------------------------------------
+# ═══════════════════════════════════════════════════════════════════════════
 
 REVIEW_REQUIRED_COLS = ["rating", "asin", "user_id"]
 REVIEW_OPTIONAL_COLS = [
@@ -420,9 +420,9 @@ def validate_reviews_raw(path: str, thresholds: dict) -> list[CheckResult]:
     return results
 
 
-#----------------------------------------------------
+# ═══════════════════════════════════════════════════════════════════════════
 # Cross-dataset referential check
-#----------------------------------------------------
+# ═══════════════════════════════════════════════════════════════════════════
 
 def validate_cross_references(products_path: str, reviews_path: str) -> list[CheckResult]:
     """Check that review ASINs reference existing product ASINs."""
@@ -456,9 +456,9 @@ def validate_cross_references(products_path: str, reviews_path: str) -> list[Che
     return results
 
 
-#----------------------------------------------------
+# ═══════════════════════════════════════════════════════════════════════════
 # Main entry point
-#----------------------------------------------------
+# ═══════════════════════════════════════════════════════════════════════════
 
 def run_raw_validation(
     financial_path: str = "data/raw/financial_data.csv",
@@ -508,9 +508,9 @@ def run_raw_validation(
     return report
 
 
-#----------------------------------------------------
+# ═══════════════════════════════════════════════════════════════════════════
 # CLI
-#----------------------------------------------------
+# ═══════════════════════════════════════════════════════════════════════════
 if __name__ == "__main__":
     import argparse
 

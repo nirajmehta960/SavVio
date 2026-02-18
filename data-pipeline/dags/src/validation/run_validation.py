@@ -51,9 +51,9 @@ from anomaly.anomaly_validator import run_anomaly_validation, run_raw_anomaly_va
 logger = logging.getLogger(__name__)
 
 
-#----------------------------------------------------
+# ═══════════════════════════════════════════════════════════════════════════
 # Airflow-compatible callables
-#----------------------------------------------------
+# ═══════════════════════════════════════════════════════════════════════════
 
 def validate_raw(**kwargs) -> dict:
     """
@@ -104,9 +104,9 @@ def validate_anomalies(**kwargs) -> dict:
     return report.summary
 
 
-#----------------------------------------------------
+# ═══════════════════════════════════════════════════════════════════════════
 # Report handling and alerts
-#----------------------------------------------------
+# ═══════════════════════════════════════════════════════════════════════════
 
 def _handle_report(report: ValidationReport) -> None:
     """
@@ -165,9 +165,9 @@ def _send_alert(report: ValidationReport) -> None:
     # EmailOperator(to="team@savvio.dev", subject=subject, html_content=body)
 
 
-#----------------------------------------------------
-# CLI entrypoint
-#----------------------------------------------------
+# ═══════════════════════════════════════════════════════════════════════════
+# CLI — run all stages or a specific one
+# ═══════════════════════════════════════════════════════════════════════════
 
 def main():
     import argparse

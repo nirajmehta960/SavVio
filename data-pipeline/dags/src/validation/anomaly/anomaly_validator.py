@@ -37,9 +37,9 @@ from validation_config import CheckResult, Severity, ValidationReport
 logger = logging.getLogger(__name__)
 
 
-#----------------------------------------------------
+# ═══════════════════════════════════════════════════════════════════════════
 # Helpers
-#----------------------------------------------------
+# ═══════════════════════════════════════════════════════════════════════════
 
 def _load_csv(path: str) -> pd.DataFrame:
     return pd.read_csv(path)
@@ -75,9 +75,9 @@ def _quarantine_records(df: pd.DataFrame, indices: list, dataset_name: str,
         logger.error(f"Failed to quarantine records: {e}")
 
 
-#----------------------------------------------------
+# ═══════════════════════════════════════════════════════════════════════════
 # Tier 1 — Raw financial anomaly checks (light, INFO-only, never halts)
-#----------------------------------------------------
+# ═══════════════════════════════════════════════════════════════════════════
 
 def _raw_financial_anomalies(path: str) -> list[CheckResult]:
     results, ds = [], "financial_raw"
@@ -101,9 +101,9 @@ def _raw_financial_anomalies(path: str) -> list[CheckResult]:
     return results
 
 
-#----------------------------------------------------
+# ═══════════════════════════════════════════════════════════════════════════
 # Tier 1 — Runner
-#----------------------------------------------------
+# ═══════════════════════════════════════════════════════════════════════════
 
 def run_raw_anomaly_validation(
     financial_path: str = "data/raw/financial_data.csv",
@@ -123,9 +123,9 @@ def run_raw_anomaly_validation(
     return report
 
 
-#----------------------------------------------------
+# ═══════════════════════════════════════════════════════════════════════════
 # Tier 2 — Featured financial anomaly checks (full, WARNING/CRITICAL, gates DB load)
-#----------------------------------------------------
+# ═══════════════════════════════════════════════════════════════════════════
 
 def _featured_financial_anomalies(path: str) -> list[CheckResult]:
     """Statistical anomaly detection on financial_featured.csv (goes to DB)."""
@@ -165,9 +165,9 @@ def _featured_financial_anomalies(path: str) -> list[CheckResult]:
     return results
 
 
-#----------------------------------------------------
+# ═══════════════════════════════════════════════════════════════════════════
 # Tier 2 — Runner
-#----------------------------------------------------
+# ═══════════════════════════════════════════════════════════════════════════
 
 def run_anomaly_validation(
     financial_path: str = "data/features/financial_featured.csv",
@@ -194,9 +194,9 @@ def run_anomaly_validation(
     return report
 
 
-#----------------------------------------------------
+# ═══════════════════════════════════════════════════════════════════════════
 # CLI entrypoint
-#----------------------------------------------------
+# ═══════════════════════════════════════════════════════════════════════════
 
 if __name__ == "__main__":
     import argparse
