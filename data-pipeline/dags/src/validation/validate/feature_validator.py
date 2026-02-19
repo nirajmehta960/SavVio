@@ -156,21 +156,21 @@ def validate_financial_features(gdf: PandasDataset,
                     metric_value=int(has_inf),
                 ))
 
-    # ── 5. savings_rate: typically -1 to 10 (clipped bounds) ──────────────
-    if "savings_rate" in gdf.columns:
+    # ── 5. savings_rate: typically 0–1 ────────────────────────────────────
+    if "saving_to_income_ratio" in gdf.columns:
         res = gdf.expect_column_values_to_be_between(
-            "savings_rate", min_value=-1.0, max_value=10.0, mostly=0.95
+            "saving_to_income_ratio", min_value=-0.5, max_value=1.5, mostly=0.95
         )
         results.append(_check(res, "feat_savings_rate_range", Severity.WARNING, ds,
-                              "savings_rate should be roughly -1.0 to 10.0"))
+                              "saving_to_income_ratio should be roughly -0.5 to 1.5"))
 
-    # ── 6. expense_burden_ratio: 0–10 (clipped max) ───────────────────────
+    # ── 6. expense_burden_ratio: 0–1+ ─────────────────────────────────────
     if "monthly_expense_burden_ratio" in gdf.columns:
         res = gdf.expect_column_values_to_be_between(
-            "monthly_expense_burden_ratio", min_value=0, max_value=10.0, mostly=0.95
+            "monthly_expense_burden_ratio", min_value=0, max_value=3.0, mostly=0.95
         )
         results.append(_check(res, "feat_expense_burden_range", Severity.WARNING, ds,
-                              "monthly_expense_burden_ratio should be 0–10 for 95% of records"))
+                              "monthly_expense_burden_ratio should be 0–3 for 95% of records"))
 
     # ── 7. emergency_fund_months >= 0 ─────────────────────────────────────
     if "financial_runway" in gdf.columns:
