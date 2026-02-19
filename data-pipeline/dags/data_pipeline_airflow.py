@@ -5,9 +5,7 @@ from pathlib import Path
 from src.ingestion.run_ingestion import ingest_financial_task, ingest_product_task, ingest_review_task
 from src.preprocess.run_preprocessing import preprocess_financial_task, preprocess_product_task, preprocess_review_task
 from src.features.run_features import feature_financial_task, feature_review_task
-from src.database.upload_to_postgres import load_financial_profiles, load_products, load_reviews
-from src.database.upload_to_vector_db import generate_and_load
-from src.database.db_connection import create_db_engine
+from src.database.run_database import load_financial_task, load_products_task, load_reviews_task, generate_and_load_embedding_task
 
 from datetime import datetime, timedelta
 from airflow import DAG
@@ -52,6 +50,7 @@ error_at_ingestion = EmailOperator(
     to="murtaza.sn786@gmail.com",
     subject="SavVio Data Pipeline Airflow - Error at Ingestion",
     html_content="<p>Something went wrong at Ingestion stage.</p>",
+    trigger_rule=TriggerRule.ONE_FAILED,
     dag=dag,
 )
 
@@ -60,6 +59,7 @@ error_at_preprocessing = EmailOperator(
     to="murtaza.sn786@gmail.com",
     subject="SavVio Data Pipeline Airflow - Error at Preprocessing",
     html_content="<p>Something went wrong at Preprocessing stage.</p>",
+    trigger_rule=TriggerRule.ONE_FAILED,
     dag=dag,
 )
 
@@ -68,6 +68,7 @@ error_at_feature_engineering = EmailOperator(
     to="murtaza.sn786@gmail.com",
     subject="SavVio Data Pipeline Airflow - Error at Feature Engineering",
     html_content="<p>Something went wrong at Feature Engineering stage.</p>",
+    trigger_rule=TriggerRule.ONE_FAILED,
     dag=dag,
 )
 
@@ -76,6 +77,7 @@ error_at_DB_loading = EmailOperator(
     to="murtaza.sn786@gmail.com",
     subject="SavVio Data Pipeline Airflow - Error at DB Loading",
     html_content="<p>Something went wrong at DB Loading stage.</p>",
+    trigger_rule=TriggerRule.ONE_FAILED,
     dag=dag,
 )
 
@@ -94,6 +96,7 @@ slack_error_at_ingestion = SlackWebhookOperator(
     slack_webhook_conn_id="slack_webhook",
     message=":red_circle: *SavVio Data Pipeline* — Error at *Ingestion* stage.",
     channel="#group-34",
+    trigger_rule=TriggerRule.ONE_FAILED,
     dag=dag,
 )
 
@@ -102,6 +105,7 @@ slack_error_at_preprocessing = SlackWebhookOperator(
     slack_webhook_conn_id="slack_webhook",
     message=":red_circle: *SavVio Data Pipeline* — Error at *Preprocessing* stage.",
     channel="#group-34",
+    trigger_rule=TriggerRule.ONE_FAILED,
     dag=dag,
 )
 
@@ -110,6 +114,7 @@ slack_error_at_feature_engineering = SlackWebhookOperator(
     slack_webhook_conn_id="slack_webhook",
     message=":red_circle: *SavVio Data Pipeline* — Error at *Feature Engineering* stage.",
     channel="#group-34",
+    trigger_rule=TriggerRule.ONE_FAILED,
     dag=dag,
 )
 
@@ -118,6 +123,7 @@ slack_error_at_DB_loading = SlackWebhookOperator(
     slack_webhook_conn_id="slack_webhook",
     message=":red_circle: *SavVio Data Pipeline* — Error at *DB Loading* stage.",
     channel="#group-34",
+    trigger_rule=TriggerRule.ONE_FAILED,
     dag=dag,
 )
 
@@ -176,6 +182,10 @@ preprocess_reviews = PythonOperator(
 # Ingestion fan-in → Preprocessing (all three run in parallel)
 [ingest_financial, ingest_products, ingest_reviews] >> [preprocess_financial, preprocess_products, preprocess_reviews]
 
+# Ingestion error alerts (fire only if any ingestion task fails)
+[ingest_financial, ingest_products, ingest_reviews] >> error_at_ingestion
+[ingest_financial, ingest_products, ingest_reviews] >> slack_error_at_ingestion
+
 #----------------------------------------------------
 # Feature Engineering  (runs in PARALLEL, after preprocessing)
 #----------------------------------------------------
@@ -195,6 +205,10 @@ feature_reviews = PythonOperator(
 # Preprocessing fan-in → Feature Engineering (both run in parallel)
 [preprocess_financial, preprocess_products, preprocess_reviews] >> [feature_financial, feature_reviews]
 
+# Preprocessing error alerts
+[preprocess_financial, preprocess_products, preprocess_reviews] >> error_at_preprocessing
+[preprocess_financial, preprocess_products, preprocess_reviews] >> slack_error_at_preprocessing
+
 
 
 #----------------------------------------------------
@@ -203,33 +217,37 @@ feature_reviews = PythonOperator(
 
 load_financial = PythonOperator(
     task_id='load_financial_profiles',
-    python_callable=load_financial_profiles,
-    dag=dag
+    python_callable=load_financial_task,
+    dag=dag,
 )
 
-load_products = PythonOperator(
+load_product = PythonOperator(
     task_id='load_products',
-    python_callable=load_products,
-    op_kwargs={'rating_variance_path': 'data/features/product_rating_variance.csv'},
-    dag=dag
+    python_callable=load_products_task,
+    dag=dag,
 )
 
-load_reviews = PythonOperator(
+load_review = PythonOperator(
     task_id='load_reviews',
-    python_callable=load_reviews,
-    dag=dag
+    python_callable=load_reviews_task,
+    dag=dag,
 )
 
-generate_embeddings = PythonOperator(
-    task_id='generate_embeddings',
-    python_callable=generate_and_load,
-    dag=dag
+generate_load_embeddings = PythonOperator(
+    task_id='generate_load_embeddings',
+    python_callable=generate_and_load_embedding_task,
+    dag=dag,
 )
 
-# Feature Engineering fan-in → Loading
-[feature_financial, feature_reviews] >> [load_financial, load_products, load_reviews]
+[load_financial, load_product, load_review] >> generate_load_embeddings
 
-[load_financial, load_products, load_reviews] >> generate_embeddings
+# Feature Engineering error alerts
+[feature_financial, feature_reviews] >> error_at_feature_engineering
+[feature_financial, feature_reviews] >> slack_error_at_feature_engineering
+
+# DB Loading error alerts
+[load_financial, load_product, load_review, generate_load_embeddings] >> error_at_DB_loading
+[load_financial, load_product, load_review, generate_load_embeddings] >> slack_error_at_DB_loading
 
 #----------------------------------------------------
 # Airflow DAG for Bias Analysis
