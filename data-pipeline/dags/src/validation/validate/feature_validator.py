@@ -249,16 +249,18 @@ def validate_affordability_features(gdf: PandasDataset,
 # ═══════════════════════════════════════════════════════════════════════════
 
 REVIEW_FEATURES = [
-    "avg_product_rating",
-    "num_reviews",
     "rating_variance",
-    "has_text_reviews",
 ]
 
 
 def validate_review_features(gdf: PandasDataset,
                               thresholds: dict) -> list[CheckResult]:
-    """Validate review-based features."""
+    """Validate review-based features.
+
+    Only rating_variance is engineered here. avg_product_rating and
+    rating_number already exist in the product metadata (product_preprocessed.jsonl).
+    has_text_reviews is not a useful signal for affordability scoring.
+    """
     results: list[CheckResult] = []
     ds = "review_features"
 
@@ -272,31 +274,11 @@ def validate_review_features(gdf: PandasDataset,
     for col in REVIEW_FEATURES:
         results.extend(_no_nan_inf(gdf, col, ds, Severity.WARNING))
 
-    # ── 3. avg_product_rating in 1–5 ─────────────────────────────────────
-    if "avg_product_rating" in gdf.columns:
-        res = gdf.expect_column_values_to_be_between(
-            "avg_product_rating", min_value=1.0, max_value=5.0
-        )
-        results.append(_check(res, "feat_avg_rating_range", Severity.CRITICAL, ds,
-                              "avg_product_rating must be 1.0–5.0"))
-
-    # ── 4. num_reviews >= 0 ───────────────────────────────────────────────
-    if "num_reviews" in gdf.columns:
-        res = gdf.expect_column_values_to_be_between("num_reviews", min_value=0)
-        results.append(_check(res, "feat_num_reviews_non_negative", Severity.CRITICAL, ds,
-                              "num_reviews must be >= 0"))
-
-    # ── 5. rating_variance >= 0 ───────────────────────────────────────────
+    # ── 3. rating_variance >= 0 ───────────────────────────────────────────
     if "rating_variance" in gdf.columns:
         res = gdf.expect_column_values_to_be_between("rating_variance", min_value=0)
         results.append(_check(res, "feat_rating_variance_non_negative", Severity.WARNING, ds,
                               "rating_variance must be >= 0"))
-
-    # ── 6. has_text_reviews is binary ─────────────────────────────────────
-    if "has_text_reviews" in gdf.columns:
-        res = gdf.expect_column_values_to_be_in_set("has_text_reviews", [0, 1, True, False])
-        results.append(_check(res, "feat_has_text_binary", Severity.WARNING, ds,
-                              "has_text_reviews should be 0/1"))
 
     return results
 

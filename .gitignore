@@ -122,3 +122,4 @@ data-pipeline/config/
 *.pyo
 *.pyd
 .env
+data-pipeline/dags/config
