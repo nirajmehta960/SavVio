@@ -1,7 +1,14 @@
-"""Feature-stage validation checks.
+"""
+Feature validation for SavVio pipeline (Phase 12).
 
-Validates engineered datasets in `data/features/` including presence checks,
-NaN/Inf guards, value-range checks, and formula spot checks.
+Validates engineered features in data/validated/ to ensure
+calculations are correct, values are within expected ranges,
+and no NaN/Inf values were introduced.
+
+Feature groups:
+  - Financial health: discretionary_income, debt_to_income_ratio, etc.
+  - Affordability: price_to_income_ratio, affordability_score, RUS
+  - Review-based: avg_product_rating, num_reviews, rating_variance
 """
 
 import logging
@@ -9,7 +16,6 @@ import sys
 import os
 import numpy as np
 import pandas as pd
-import great_expectations
 import great_expectations as gx
 from pathlib import Path
 
@@ -20,7 +26,7 @@ except ImportError:
 
 # Resolve local imports from the validation package.
 current_file_path = Path(__file__).resolve()
-validation_dir = current_file_path.parent.parent  # .../dags/src/validation/
+validation_dir = current_file_path.parent.parent
 if str(validation_dir) not in sys.path:
     sys.path.insert(0, str(validation_dir))
 
@@ -101,8 +107,8 @@ FINANCIAL_FEATURES = [
     "discretionary_income",
     "debt_to_income_ratio",
     "savings_rate",
-    "monthly_expense_burden_ratio",
-    "financial_runway",
+    "expense_burden_ratio",
+    "emergency_fund_months",
 ]
 
 
@@ -143,8 +149,8 @@ def validate_financial_features(gdf: PandasDataset,
                               "debt_to_income_ratio should be 0–5 for 95% of records"))
 
         # Zero-income users should have ratio = 0 or flagged, not Inf
-        if "monthly_income" in gdf.columns:
-            zero_income = gdf["monthly_income"] == 0
+        if "income_usd" in gdf.columns:
+            zero_income = gdf["income_usd"] == 0
             if zero_income.any():
                 dti_for_zero = gdf.loc[zero_income, "debt_to_income_ratio"]
                 has_inf = np.isinf(dti_for_zero).any()
@@ -157,28 +163,28 @@ def validate_financial_features(gdf: PandasDataset,
                 ))
 
     # ── 5. savings_rate: typically 0–1 ────────────────────────────────────
-    if "saving_to_income_ratio" in gdf.columns:
+    if "savings_rate" in gdf.columns:
         res = gdf.expect_column_values_to_be_between(
-            "saving_to_income_ratio", min_value=-0.5, max_value=1.5, mostly=0.95
+            "savings_rate", min_value=-0.5, max_value=1.5, mostly=0.95
         )
         results.append(_check(res, "feat_savings_rate_range", Severity.WARNING, ds,
-                              "saving_to_income_ratio should be roughly -0.5 to 1.5"))
+                              "savings_rate should be roughly -0.5 to 1.5"))
 
     # ── 6. expense_burden_ratio: 0–1+ ─────────────────────────────────────
-    if "monthly_expense_burden_ratio" in gdf.columns:
+    if "expense_burden_ratio" in gdf.columns:
         res = gdf.expect_column_values_to_be_between(
-            "monthly_expense_burden_ratio", min_value=0, max_value=3.0, mostly=0.95
+            "expense_burden_ratio", min_value=0, max_value=3.0, mostly=0.95
         )
         results.append(_check(res, "feat_expense_burden_range", Severity.WARNING, ds,
-                              "monthly_expense_burden_ratio should be 0–3 for 95% of records"))
+                              "expense_burden_ratio should be 0–3 for 95% of records"))
 
     # ── 7. emergency_fund_months >= 0 ─────────────────────────────────────
-    if "financial_runway" in gdf.columns:
+    if "emergency_fund_months" in gdf.columns:
         res = gdf.expect_column_values_to_be_between(
-            "financial_runway", min_value=0, mostly=0.90
+            "emergency_fund_months", min_value=0, mostly=0.90
         )
-        results.append(_check(res, "feat_financial_runway_range", Severity.INFO, ds,
-                              "financial_runway should be >= 0"))
+        results.append(_check(res, "feat_emergency_fund_range", Severity.INFO, ds,
+                              "emergency_fund_months should be >= 0"))
 
     return results
 
@@ -237,13 +243,16 @@ def validate_affordability_features(gdf: PandasDataset,
 
     return results
 
+
 # ═══════════════════════════════════════════════════════════════════════════
 # Review-based features
 # ═══════════════════════════════════════════════════════════════════════════
 
 REVIEW_FEATURES = [
+    "avg_product_rating",
     "num_reviews",
     "rating_variance",
+    "has_text_reviews",
 ]
 
 
@@ -263,17 +272,31 @@ def validate_review_features(gdf: PandasDataset,
     for col in REVIEW_FEATURES:
         results.extend(_no_nan_inf(gdf, col, ds, Severity.WARNING))
 
-    # ── 3. num_reviews >= 0 ───────────────────────────────────────────────
+    # ── 3. avg_product_rating in 1–5 ─────────────────────────────────────
+    if "avg_product_rating" in gdf.columns:
+        res = gdf.expect_column_values_to_be_between(
+            "avg_product_rating", min_value=1.0, max_value=5.0
+        )
+        results.append(_check(res, "feat_avg_rating_range", Severity.CRITICAL, ds,
+                              "avg_product_rating must be 1.0–5.0"))
+
+    # ── 4. num_reviews >= 0 ───────────────────────────────────────────────
     if "num_reviews" in gdf.columns:
         res = gdf.expect_column_values_to_be_between("num_reviews", min_value=0)
         results.append(_check(res, "feat_num_reviews_non_negative", Severity.CRITICAL, ds,
                               "num_reviews must be >= 0"))
 
-    # ── 4. rating_variance >= 0 ───────────────────────────────────────────
+    # ── 5. rating_variance >= 0 ───────────────────────────────────────────
     if "rating_variance" in gdf.columns:
         res = gdf.expect_column_values_to_be_between("rating_variance", min_value=0)
         results.append(_check(res, "feat_rating_variance_non_negative", Severity.WARNING, ds,
                               "rating_variance must be >= 0"))
+
+    # ── 6. has_text_reviews is binary ─────────────────────────────────────
+    if "has_text_reviews" in gdf.columns:
+        res = gdf.expect_column_values_to_be_in_set("has_text_reviews", [0, 1, True, False])
+        results.append(_check(res, "feat_has_text_binary", Severity.WARNING, ds,
+                              "has_text_reviews should be 0/1"))
 
     return results
 
@@ -294,84 +317,61 @@ def validate_formula_spot_checks(gdf: PandasDataset) -> list[CheckResult]:
     n_sample = min(100, len(df))
     sample = df.sample(n=n_sample, random_state=42) if len(df) > n_sample else df
 
-    # NOTE: Spot-checks must mirror feature-engineering post-processing:
-    # - ratios: replace Inf with NaN
-    # - clip (DTI/expense burden upper=10.0; savings_rate lower=-1.0 upper=10.0)
-    # - round to 2 decimals
-    #
-    # Otherwise these checks will fail whenever feature engineering intentionally clips/rounds.
-    def _round2(series: pd.Series) -> pd.Series:
-        return series.round(2)
-
-    # ── discretionary_income = monthly_income - (monthly_expenses + monthly_emi) ──────────────
-    if all(c in df.columns for c in ["discretionary_income", "monthly_income", "monthly_expenses", "monthly_emi"]):
-        expected = sample["monthly_income"] - (sample["monthly_expenses"] + sample["monthly_emi"])
-        expected = expected.replace([np.inf, -np.inf], np.nan)
-        expected = _round2(expected)
+    # ── discretionary_income = income - total_fixed_expenses ──────────────
+    if all(c in df.columns for c in ["discretionary_income", "income_usd", "total_fixed_expenses"]):
+        expected = sample["income_usd"] - sample["total_fixed_expenses"]
         actual = sample["discretionary_income"]
-        mismatches = (~np.isclose(expected, actual, atol=0.01, rtol=0.0, equal_nan=True)).sum()
+        mismatches = (~np.isclose(expected, actual, rtol=1e-4, equal_nan=True)).sum()
         results.append(CheckResult(
             check_name="formula_discretionary_income",
             passed=mismatches == 0,
             severity=Severity.CRITICAL, dataset=ds, stage="features",
-            details=f"{mismatches}/{n_sample} rows don't match: monthly_income - (monthly_expenses + monthly_emi)",
+            details=f"{mismatches}/{n_sample} rows don't match: income - fixed_expenses",
             metric_value=mismatches,
         ))
 
-    # ── debt_to_income_ratio = monthly_emi / monthly_income ──────────────────────────────
-    if all(c in df.columns for c in ["debt_to_income_ratio", "monthly_emi", "monthly_income"]):
-        mask = sample["monthly_income"] > 0
+    # ── debt_to_income_ratio = debt / income ──────────────────────────────
+    if all(c in df.columns for c in ["debt_to_income_ratio", "monthly_emi", "income_usd"]):
+        mask = sample["income_usd"] > 0
         if mask.any():
-            expected = sample.loc[mask, "monthly_emi"] / sample.loc[mask, "monthly_income"]
-            expected = expected.replace([np.inf, -np.inf], np.nan)
-            # Mirror feature engineering: clip upper bound
-            expected = expected.clip(upper=10.0)
-            expected = _round2(expected)
+            expected = sample.loc[mask, "monthly_emi"] / sample.loc[mask, "income_usd"]
             actual = sample.loc[mask, "debt_to_income_ratio"]
-            mismatches = (~np.isclose(expected, actual, atol=0.01, rtol=0.0, equal_nan=True)).sum()
+            mismatches = (~np.isclose(expected, actual, rtol=1e-4, equal_nan=True)).sum()
             results.append(CheckResult(
                 check_name="formula_dti_ratio",
                 passed=mismatches == 0,
                 severity=Severity.CRITICAL, dataset=ds, stage="features",
-                details=f"{mismatches}/{mask.sum()} non-zero-income rows don't match (clipped/rounded): monthly_emi / monthly_income",
+                details=f"{mismatches}/{mask.sum()} non-zero-income rows don't match: emi / income",
                 metric_value=mismatches,
             ))
 
-    # ── savings_rate = savings_balance / monthly_income ───────────────────────────────────
-    if all(c in df.columns for c in ["savings_rate", "savings_balance", "monthly_income"]):
-        mask = sample["monthly_income"] > 0
+    # ── savings_rate = savings / income ───────────────────────────────────
+    if all(c in df.columns for c in ["savings_rate", "monthly_savings", "income_usd"]):
+        mask = sample["income_usd"] > 0
         if mask.any():
-            expected = sample.loc[mask, "savings_balance"] / sample.loc[mask, "monthly_income"]
-            expected = expected.replace([np.inf, -np.inf], np.nan)
-            # Mirror feature engineering: clip bounds
-            expected = expected.clip(lower=-1.0, upper=10.0)
-            expected = _round2(expected)
+            expected = sample.loc[mask, "monthly_savings"] / sample.loc[mask, "income_usd"]
             actual = sample.loc[mask, "savings_rate"]
-            mismatches = (~np.isclose(expected, actual, atol=0.01, rtol=0.0, equal_nan=True)).sum()
+            mismatches = (~np.isclose(expected, actual, rtol=1e-4, equal_nan=True)).sum()
             results.append(CheckResult(
                 check_name="formula_savings_rate",
                 passed=mismatches == 0,
                 severity=Severity.CRITICAL, dataset=ds, stage="features",
-                details=f"{mismatches}/{mask.sum()} non-zero-income rows don't match (clipped/rounded): savings_balance / monthly_income",
+                details=f"{mismatches}/{mask.sum()} non-zero-income rows don't match: savings / income",
                 metric_value=mismatches,
             ))
 
-    # ── monthly_expense_burden_ratio = (monthly_expenses + monthly_emi) / monthly_income ──────────────────────────
-    if all(c in df.columns for c in ["monthly_expense_burden_ratio", "monthly_expenses", "monthly_emi", "monthly_income"]):
-        mask = sample["monthly_income"] > 0
+    # ── expense_burden_ratio = expenses / income ──────────────────────────
+    if all(c in df.columns for c in ["expense_burden_ratio", "monthly_expenses", "income_usd"]):
+        mask = sample["income_usd"] > 0
         if mask.any():
-            expected = (sample.loc[mask, "monthly_expenses"] + sample.loc[mask, "monthly_emi"]) / sample.loc[mask, "monthly_income"]
-            expected = expected.replace([np.inf, -np.inf], np.nan)
-            # Mirror feature engineering: clip upper bound
-            expected = expected.clip(upper=10.0)
-            expected = _round2(expected)
-            actual = sample.loc[mask, "monthly_expense_burden_ratio"]
-            mismatches = (~np.isclose(expected, actual, atol=0.01, rtol=0.0, equal_nan=True)).sum()
+            expected = sample.loc[mask, "monthly_expenses"] / sample.loc[mask, "income_usd"]
+            actual = sample.loc[mask, "expense_burden_ratio"]
+            mismatches = (~np.isclose(expected, actual, rtol=1e-4, equal_nan=True)).sum()
             results.append(CheckResult(
                 check_name="formula_expense_burden",
                 passed=mismatches == 0,
                 severity=Severity.CRITICAL, dataset=ds, stage="features",
-                details=f"{mismatches}/{mask.sum()} non-zero-income rows don't match (clipped/rounded): (monthly_expenses + monthly_emi) / monthly_income",
+                details=f"{mismatches}/{mask.sum()} non-zero-income rows don't match: expenses / income",
                 metric_value=mismatches,
             ))
 
@@ -457,9 +457,9 @@ def run_feature_validation(
     return report
 
 
-# ═══════════════════════════════════════════════════════════════════════════
+# ---------------------------------------------------------------------------
 # CLI
-# ═══════════════════════════════════════════════════════════════════════════
+# ---------------------------------------------------------------------------
 if __name__ == "__main__":
     import argparse
 
