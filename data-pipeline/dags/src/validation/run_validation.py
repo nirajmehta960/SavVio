@@ -169,6 +169,31 @@ def _send_alert(report: ValidationReport) -> None:
 # CLI — run all stages or a specific one
 # ═══════════════════════════════════════════════════════════════════════════
 
+# Dependency chain for "all" mode.
+# Each stage depends on the previous one passing (no CRITICAL failures).
+# raw_anomalies is independent (INFO-only, never halts) and runs alongside raw.
+#
+#   raw ──────→ processed ──→ features ──→ anomalies
+#    ↘ raw_anomalies (independent, INFO-only)
+#
+VALIDATION_PIPELINE = [
+    # (stage_name, depends_on)
+    ("raw",            None),
+    ("raw_anomalies",  None),       # independent — INFO-only, never halts
+    ("processed",      "raw"),      # skip if raw HALTed
+    ("features",       "processed"),# skip if processed HALTed
+    ("anomalies",      "features"), # skip if features HALTed
+]
+
+STAGE_MAP = {
+    "raw":            validate_raw,
+    "raw_anomalies":  validate_raw_anomalies,
+    "processed":      validate_processed,
+    "features":       validate_features,
+    "anomalies":      validate_anomalies,
+}
+
+
 def main():
     import argparse
 
@@ -185,40 +210,62 @@ def main():
     )
     args = parser.parse_args()
 
+    # ── Single-stage mode: run and exit ───────────────────────────────────
+    if args.stage != "all":
+        validator_func = STAGE_MAP[args.stage]
+        try:
+            validator_func()
+        except RuntimeError:
+            logger.error(f"Validation for stage '{args.stage}' failed critically.")
+            sys.exit(1)
+        except Exception as e:
+            logger.exception(f"Unexpected error during '{args.stage}': {e}")
+            sys.exit(1)
+        sys.exit(0)
+
+    # ── All-stages mode: follow dependency chain, fail-fast ───────────────
+    halted_stages: set[str] = set()   # stages that HALTed
     exit_code = 0
 
-    STAGE_MAP = {
-        "raw": validate_raw,
-        "raw_anomalies": validate_raw_anomalies,
-        "processed": validate_processed,
-        "features": validate_features,
-        "anomalies": validate_anomalies,
-    }
-
-    if args.stage == "all":
-        stages_to_run = ["raw", "raw_anomalies", "processed", "features", "anomalies"]
-    else:
-        stages_to_run = [args.stage]
-
-    for stage_name in stages_to_run:
-        validator_func = STAGE_MAP.get(stage_name)
-        if not validator_func:
-            logger.error(f"Unknown stage: {stage_name}")
+    for stage_name, depends_on in VALIDATION_PIPELINE:
+        # Skip if upstream dependency HALTed
+        if depends_on and depends_on in halted_stages:
+            logger.warning(
+                "SKIPPING [%s] — upstream stage '%s' failed critically. "
+                "Fix upstream issues first.",
+                stage_name, depends_on,
+            )
+            halted_stages.add(stage_name)  # propagate halt downstream
+            exit_code = 1
             continue
-            
+
+        validator_func = STAGE_MAP[stage_name]
         try:
             logger.info(f"Running validation for stage: {stage_name}")
             validator_func()
         except RuntimeError:
             exit_code = 1
-            logger.error(f"Validation for stage '{stage_name}' failed critically.")
-            if args.stage != "all":
-                sys.exit(1)
+            halted_stages.add(stage_name)
+            logger.error(
+                "Stage '%s' HALTED — downstream stages will be skipped.",
+                stage_name,
+            )
         except Exception as e:
             exit_code = 1
-            logger.exception(f"An unexpected error occurred during validation for stage '{stage_name}': {e}")
-            if args.stage != "all":
-                sys.exit(1)
+            halted_stages.add(stage_name)
+            logger.exception(
+                "Unexpected error in stage '%s': %s — treating as HALT.",
+                stage_name, e,
+            )
+
+    # ── Final summary ─────────────────────────────────────────────────────
+    if halted_stages:
+        logger.critical(
+            "Pipeline finished with HALTED stages: %s",
+            ", ".join(sorted(halted_stages)),
+        )
+    else:
+        logger.info("All validation stages completed successfully.")
 
     sys.exit(exit_code)
 

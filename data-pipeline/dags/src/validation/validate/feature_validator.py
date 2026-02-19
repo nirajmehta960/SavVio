@@ -1,14 +1,14 @@
 """
 Feature validation for SavVio pipeline (Phase 12).
 
-Validates engineered features in data/validated/ to ensure
+Validates engineered features in data/features/ to ensure
 calculations are correct, values are within expected ranges,
 and no NaN/Inf values were introduced.
 
 Feature groups:
   - Financial health: discretionary_income, debt_to_income_ratio, etc.
-  - Affordability: price_to_income_ratio, affordability_score, RUS
-  - Review-based: avg_product_rating, num_reviews, rating_variance
+  - Affordability: price_to_income_ratio, affordability_score, RUS (computed at inference)
+  - Review-based: rating_variance
 """
 
 import logging

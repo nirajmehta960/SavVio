@@ -145,7 +145,7 @@ def _featured_financial_anomalies(path: str) -> list[CheckResult]:
             results.append(_report_outliers("monthly_expenses", "zscore_6.0", outliers, ds, Severity.WARNING))
 
         for col in ["discretionary_income", "debt_to_income_ratio", "savings_rate",
-                     "monthly_expense_burden_ratio", "financial_runway"]:
+                     "expense_burden_ratio", "emergency_fund_months"]:
             if col in df.columns:
                 outliers = detector.check_iqr(col, multiplier=4.0)
                 results.append(_report_outliers(col, "iqr_4.0", outliers, ds, Severity.WARNING))
