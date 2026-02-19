@@ -134,13 +134,13 @@ def validate_financial_features(gdf: PandasDataset,
             metric_value=gdf["discretionary_income"].mean(),
         ))
 
-    # ── 4. debt_to_income_ratio: typically 0–10 (clipped max) ─────────────
+    # ── 4. debt_to_income_ratio: typically 0–2 ────────────────────────────
     if "debt_to_income_ratio" in gdf.columns:
         res = gdf.expect_column_values_to_be_between(
-            "debt_to_income_ratio", min_value=0, max_value=10.0, mostly=0.95
+            "debt_to_income_ratio", min_value=0, max_value=5.0, mostly=0.95
         )
         results.append(_check(res, "feat_dti_range", Severity.WARNING, ds,
-                              "debt_to_income_ratio should be 0–10 for 95% of records"))
+                              "debt_to_income_ratio should be 0–5 for 95% of records"))
 
         # Zero-income users should have ratio = 0 or flagged, not Inf
         if "monthly_income" in gdf.columns:
