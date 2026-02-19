@@ -34,7 +34,7 @@ def main():
     args = parser.parse_args()
 
     # Resolve data paths.
-    BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     DATA_DIR = os.path.join(BASE_DIR, "data")
     
     # Financial input/output files.
@@ -43,7 +43,7 @@ def main():
     
     # Review and product input/output files.
     REV_INPUT = os.path.join(DATA_DIR, "processed/review_preprocessed.jsonl")
-    REV_OUTPUT = os.path.join(DATA_DIR, "features/reviews_featured.jsonl")
+    REV_OUTPUT = os.path.join(DATA_DIR, "features/product_rating_variance.csv")
     
     PROD_INPUT = os.path.join(DATA_DIR, "processed/product_preprocessed.jsonl")
     
