@@ -8,7 +8,6 @@ import logging
 import sys
 import os
 import pandas as pd
-import great_expectations
 import great_expectations as gx
 from pathlib import Path
 
@@ -19,7 +18,7 @@ except ImportError:
 
 # Resolve local imports from the validation package.
 current_file_path = Path(__file__).resolve()
-validation_dir = current_file_path.parent.parent  # .../dags/src/validation/
+validation_dir = current_file_path.parent.parent
 if str(validation_dir) not in sys.path:
     sys.path.insert(0, str(validation_dir))
 
@@ -212,7 +211,7 @@ def validate_products_processed(path: str, raw_path: str,
         results.append(_check(res, "prod_proc_name_non_empty", Severity.WARNING, ds,
                               "product_name should not be empty after cleaning"))
 
-    # ── 3. price valid ────────────────────────────────────────────────
+    # ── 3. Price valid range and no nulls (critical) ──────────────────────
     if "price" in gdf.columns:
         res = gdf.expect_column_values_to_be_between("price", min_value=0.01, max_value=100_000)
         results.append(_check(res, "prod_proc_price_range", Severity.WARNING, ds,
@@ -439,9 +438,9 @@ def run_processed_validation(
     return report
 
 
-# ═══════════════════════════════════════════════════════════════════════════
+# ---------------------------------------------------------------------------
 # CLI
-# ═══════════════════════════════════════════════════════════════════════════
+# ---------------------------------------------------------------------------
 if __name__ == "__main__":
     import argparse
 
