@@ -5,7 +5,9 @@ from pathlib import Path
 from src.ingestion.run_ingestion import ingest_financial_task, ingest_product_task, ingest_review_task
 from src.preprocess.run_preprocessing import preprocess_financial_task, preprocess_product_task, preprocess_review_task
 from src.features.run_features import feature_financial_task, feature_review_task
-
+from src.database.upload_to_postgres import load_financial_profiles, load_products, load_reviews
+from src.database.upload_to_vector_db import generate_and_load
+from src.database.db_connection import create_db_engine
 
 from datetime import datetime, timedelta
 from airflow import DAG
@@ -201,26 +203,26 @@ feature_reviews = PythonOperator(
 
 load_financial = PythonOperator(
     task_id='load_financial_profiles',
-    python_callable=postgres_loader.load_financial_profiles,
+    python_callable=load_financial_profiles,
     dag=dag
 )
 
 load_products = PythonOperator(
     task_id='load_products',
-    python_callable=postgres_loader.load_products,
+    python_callable=load_products,
     op_kwargs={'rating_variance_path': 'data/features/product_rating_variance.csv'},
     dag=dag
 )
 
 load_reviews = PythonOperator(
     task_id='load_reviews',
-    python_callable=postgres_loader.load_reviews,
+    python_callable=load_reviews,
     dag=dag
 )
 
 generate_embeddings = PythonOperator(
     task_id='generate_embeddings',
-    python_callable=vector_loader.generate_and_load,
+    python_callable=generate_and_load,
     dag=dag
 )
 

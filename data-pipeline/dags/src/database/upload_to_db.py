@@ -14,8 +14,8 @@ import logging
 import pandas as pd
 from sqlalchemy import text
 
-from db_config import get_engine
-from models import create_tables
+from src.database.db_connection import get_engine
+from src.database.db_schema import create_tables
 
 logger = logging.getLogger(__name__)
 
