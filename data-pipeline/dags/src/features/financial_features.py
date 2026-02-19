@@ -60,7 +60,7 @@ def calculate_ratios(df: pd.DataFrame) -> pd.DataFrame:
         np.nan
     )
 
-    # Metric 4: Emergency Fund Months (formerly Financial Runway).
+    # Metric 4: Emergency Fund Months
     # Definition: Number of months a user could survive on their current savings if they lost their income.
     df["emergency_fund_months"] = np.where(
         (df["monthly_expenses"] + df["monthly_emi"]) > 0,

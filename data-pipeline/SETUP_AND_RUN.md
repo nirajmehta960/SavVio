@@ -51,7 +51,8 @@ feature engineering, and the validation/anomaly flow.
 
 ## 2. Execution Order (Current)
 
-Run all commands from `data-pipeline/`.
+Run all commands from anywhere — the scripts auto-detect the pipeline root (`data-pipeline/dags/`).
+All relative data paths below (e.g. `data/raw/...`) are relative to that root.
 
 ### 2.1 Ingestion
 
@@ -99,13 +100,18 @@ Notes:
 python3 dags/src/validation/run_validation.py all
 ```
 
-Stage order:
+Stage dependency chain (fail-fast — downstream stages are skipped if upstream HALTs):
 
-1. `raw` (schema/rule checks)
-2. `raw_anomalies` (Tier 1, INFO-only monitoring)
-3. `processed` (post-transform checks)
-4. `features` (feature checks + formula spot checks)
-5. `anomalies` (Tier 2, pre-DB anomaly checks)
+```
+raw ──────→ processed ──→ features ──→ anomalies
+ ↘ raw_anomalies (independent, INFO-only)
+```
+
+1. `raw` — schema/rule checks on raw inputs
+2. `raw_anomalies` — Tier 1 anomaly scan (INFO-only, runs independently)
+3. `processed` — post-transform checks *(skipped if `raw` HALTed)*
+4. `features` — feature checks + formula spot checks *(skipped if `processed` HALTed)*
+5. `anomalies` — Tier 2 pre-DB anomaly checks *(skipped if `features` HALTed)*
 
 To run a single stage:
 
