@@ -12,6 +12,7 @@ from airflow import DAG
 from airflow.providers.standard.operators.bash import BashOperator
 from airflow.providers.standard.operators.python import PythonOperator, BranchPythonOperator
 from airflow.providers.smtp.operators.smtp import EmailOperator
+from airflow.providers.slack.operators.slack_webhook import SlackWebhookOperator
 from airflow.providers.standard.operators.trigger_dagrun import TriggerDagRunOperator
 from airflow.task.trigger_rule import TriggerRule
 
@@ -81,6 +82,48 @@ error_at_bias_analysis = EmailOperator(
     to="murtaza.sn786@gmail.com",
     subject="SavVio Data Pipeline Airflow - Error at Bias Analysis",
     html_content="<p>Something went wrong at Bias Analysis stage.</p>",
+    dag=dag,
+)
+
+# Error Slack Operators (channel: #group-34)
+
+slack_error_at_ingestion = SlackWebhookOperator(
+    task_id="send_slack_at_ingestion_error",
+    slack_webhook_conn_id="slack_webhook",
+    message=":red_circle: *SavVio Data Pipeline* — Error at *Ingestion* stage.",
+    channel="#group-34",
+    dag=dag,
+)
+
+slack_error_at_preprocessing = SlackWebhookOperator(
+    task_id="send_slack_at_preprocessing_error",
+    slack_webhook_conn_id="slack_webhook",
+    message=":red_circle: *SavVio Data Pipeline* — Error at *Preprocessing* stage.",
+    channel="#group-34",
+    dag=dag,
+)
+
+slack_error_at_feature_engineering = SlackWebhookOperator(
+    task_id="send_slack_at_feature_engineering_error",
+    slack_webhook_conn_id="slack_webhook",
+    message=":red_circle: *SavVio Data Pipeline* — Error at *Feature Engineering* stage.",
+    channel="#group-34",
+    dag=dag,
+)
+
+slack_error_at_DB_loading = SlackWebhookOperator(
+    task_id="send_slack_at_DB_loading_error",
+    slack_webhook_conn_id="slack_webhook",
+    message=":red_circle: *SavVio Data Pipeline* — Error at *DB Loading* stage.",
+    channel="#group-34",
+    dag=dag,
+)
+
+slack_error_at_bias_analysis = SlackWebhookOperator(
+    task_id="send_slack_at_bias_analysis_error",
+    slack_webhook_conn_id="slack_webhook",
+    message=":red_circle: *SavVio Data Pipeline* — Error at *Bias Analysis* stage.",
+    channel="#group-34",
     dag=dag,
 )
 
