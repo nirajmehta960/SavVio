@@ -44,11 +44,11 @@ def calculate_ratios(df: pd.DataFrame) -> pd.DataFrame:
         np.nan
     )
 
-    # Metric 2: Savings rate.
-    # Definition: Ratio of total savings wealth relative to monthly income.
+    # Metric 2: Savings to Annual Income Ratio.
+    # Definition: Ratio of total savings wealth relative to annual income.
     df["saving_to_income_ratio"] = np.where(
         df["monthly_income"] > 0,
-        df["savings_balance"] / df["monthly_income"],
+        df["savings_balance"] / (df["monthly_income"] * 12),
         np.nan
     )
 
@@ -56,7 +56,7 @@ def calculate_ratios(df: pd.DataFrame) -> pd.DataFrame:
     # Definition: Percentage of income consumed by all monthly outflows (living costs + debt).
     df["monthly_expense_burden_ratio"] = np.where(
         df["monthly_income"] > 0,
-        (df["monthly_expenses"] + df["monthly_emi"]) / (df["monthly_income"] * 12),
+        (df["monthly_expenses"] + df["monthly_emi"]) / df["monthly_income"],
         np.nan
     )
 
