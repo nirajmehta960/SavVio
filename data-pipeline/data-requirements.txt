@@ -7,6 +7,10 @@ scikit-learn
 flask # maybe remove after testing
 scipy 
 
+# Vector Embeddings
+sentence-transformers
+psycopg2-binary
+sqlalchemy
 # -----------------------------------------------------------------------------
 # Google Cloud Platform
 # -----------------------------------------------------------------------------
@@ -23,7 +27,7 @@ python-dotenv>=1.0.0
 pyyaml>=6.0.1
 
 # Latest Airflow version
-apache-airflow>=3.1.7
+# apache-airflow>=3.1.7
 
 # For slack notifications 
 apache-airflow-providers-slack

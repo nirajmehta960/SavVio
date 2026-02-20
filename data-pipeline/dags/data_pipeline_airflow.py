@@ -303,17 +303,17 @@ validate_featured_data >> [load_financial, load_product, load_review]
 # Airflow DAG for Bias Analysis
 #----------------------------------------------------
 
-bias_financial = PythonOperator(
-    task_id='bias_analysis_financial',
-    python_callable=bias.analyze_financial_bias,
-    dag=dag
-)
+# bias_financial = PythonOperator(
+#     task_id='bias_analysis_financial',
+#     python_callable=bias.analyze_financial_bias,
+#     dag=dag
+# )
 
-bias_products = PythonOperator(
-    task_id='bias_analysis_products',
-    python_callable=bias.analyze_product_bias,
-    dag=dag
-)
+# bias_products = PythonOperator(
+#     task_id='bias_analysis_products',
+#     python_callable=bias.analyze_product_bias,
+#     dag=dag
+# )
 
-# Run in parallel since they analyze independent tracks.
-[bias_financial, bias_products] >> complete
+# # Run in parallel since they analyze independent tracks.
+# [bias_financial, bias_products] >> complete
