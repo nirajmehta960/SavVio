@@ -46,7 +46,7 @@ dag = DAG(
 
 # Error Email Operators
 
-error_at_ingestion = EmailOperator(
+email_error_at_ingestion = EmailOperator(
     task_id="send_email_at_ingestion_error",
     to="murtaza.sn786@gmail.com",
     subject="SavVio Data Pipeline Airflow - Error at Ingestion",
@@ -55,7 +55,7 @@ error_at_ingestion = EmailOperator(
     dag=dag,
 )
 
-error_at_preprocessing = EmailOperator(
+email_error_at_preprocessing = EmailOperator(
     task_id="send_email_at_preprocessing_error",
     to="murtaza.sn786@gmail.com",
     subject="SavVio Data Pipeline Airflow - Error at Preprocessing",
@@ -64,7 +64,7 @@ error_at_preprocessing = EmailOperator(
     dag=dag,
 )
 
-error_at_feature_engineering = EmailOperator(
+email_error_at_feature_engineering = EmailOperator(
     task_id="send_email_at_feature_engineering_error",
     to="murtaza.sn786@gmail.com",
     subject="SavVio Data Pipeline Airflow - Error at Feature Engineering",
@@ -73,7 +73,7 @@ error_at_feature_engineering = EmailOperator(
     dag=dag,
 )
 
-error_at_DB_loading = EmailOperator(
+email_error_at_DB_loading = EmailOperator(
     task_id="send_email_at_DB_loading_error",
     to="murtaza.sn786@gmail.com",
     subject="SavVio Data Pipeline Airflow - Error at DB Loading",
@@ -82,7 +82,7 @@ error_at_DB_loading = EmailOperator(
     dag=dag,
 )
 
-error_at_bias_analysis = EmailOperator(
+email_error_at_bias_analysis = EmailOperator(
     task_id="send_email_at_bias_analysis_error",
     to="murtaza.sn786@gmail.com",
     subject="SavVio Data Pipeline Airflow - Error at Bias Analysis",
@@ -179,7 +179,7 @@ validate_raw_anomaly = PythonOperator(
 [ingest_financial, ingest_products, ingest_reviews] >> validate_raw_anomaly  # INFO-only, non-gating
 
 # Ingestion error alerts (fire only if any ingestion task fails)
-[ingest_financial, ingest_products, ingest_reviews] >> error_at_ingestion
+[ingest_financial, ingest_products, ingest_reviews] >> email_error_at_ingestion
 [ingest_financial, ingest_products, ingest_reviews] >> slack_error_at_ingestion
 
 #----------------------------------------------------
@@ -221,7 +221,7 @@ validate_processed_data = PythonOperator(
 [preprocess_financial, preprocess_products, preprocess_reviews] >> validate_processed_data
 
 # Preprocessing error alerts
-[preprocess_financial, preprocess_products, preprocess_reviews] >> error_at_preprocessing
+[preprocess_financial, preprocess_products, preprocess_reviews] >> email_error_at_preprocessing
 [preprocess_financial, preprocess_products, preprocess_reviews] >> slack_error_at_preprocessing
 
 #----------------------------------------------------
@@ -292,11 +292,11 @@ validate_featured_data >> [load_financial, load_product, load_review]
 [load_financial, load_product, load_review] >> generate_load_embeddings
 
 # Feature Engineering error alerts
-[feature_financial, feature_reviews] >> error_at_feature_engineering
+[feature_financial, feature_reviews] >> email_error_at_feature_engineering
 [feature_financial, feature_reviews] >> slack_error_at_feature_engineering
 
 # DB Loading error alerts
-[load_financial, load_product, load_review, generate_load_embeddings] >> error_at_DB_loading
+[load_financial, load_product, load_review, generate_load_embeddings] >> email_error_at_DB_loading
 [load_financial, load_product, load_review, generate_load_embeddings] >> slack_error_at_DB_loading
 
 #----------------------------------------------------
