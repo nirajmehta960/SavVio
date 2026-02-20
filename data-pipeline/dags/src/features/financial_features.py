@@ -56,7 +56,7 @@ def calculate_ratios(df: pd.DataFrame) -> pd.DataFrame:
     # Definition: Percentage of income consumed by all monthly outflows (living costs + debt).
     df["monthly_expense_burden_ratio"] = np.where(
         df["monthly_income"] > 0,
-        (df["monthly_expenses"] + df["monthly_emi"]) / df["monthly_income"],
+        (df["monthly_expenses"] + df["monthly_emi"]) / (df["monthly_income"] * 12),
         np.nan
     )
 
