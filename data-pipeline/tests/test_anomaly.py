@@ -3,7 +3,10 @@ import pytest
 from preprocess_scripts.preprocess.financial import preprocess_financial_data
 
 def test_anomaly_extreme_values(tmp_path):
-    """測試：驗證當數值超出業務邏輯範圍時（例如信用分數為負或過高），資料是否被剔除"""
+    """
+    Test that records with extreme or out-of-range values
+    (e.g., invalid credit scores) are properly filtered out.
+    """
     test_data = {
         "user_id": [1, 2],
         "monthly_income_usd": [5000, 5000],
@@ -14,7 +17,7 @@ def test_anomaly_extreme_values(tmp_path):
         "monthly_emi_usd": [0, 0],
         "loan_interest_rate_pct": [0, 0],
         "loan_term_months": [0, 0],
-        "credit_score": [999, -50],  # 這兩個數值都超出了 300-850 的規範範圍
+        "credit_score": [999, -50],  # Both values are outside the valid credit score range (300–850)
         "employment_status": ["FT", "FT"],
         "region": ["US", "US"]
     }
@@ -24,5 +27,5 @@ def test_anomaly_extreme_values(tmp_path):
     
     processed = preprocess_financial_data(str(in_p), str(out_p))
     
-    # 驗證：這兩筆異常資料應該都要被過濾掉，結果應該為空
+    # Both rows should be filtered out due to invalid credit scores
     assert len(processed) == 0
