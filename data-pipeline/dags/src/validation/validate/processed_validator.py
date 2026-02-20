@@ -1,20 +1,40 @@
-"""
-Processed data validation for SavVio pipeline (Phase 9).
+"""Processed-stage validation checks.
 
-Validates data in data/processed/ to ensure preprocessing
-transformations didn't break data or introduce errors.
-
-Expected processed columns (based on preprocessing steps):
-  Financial: *_usd renamed, monthly normalized, median imputed
-  Products:  product_name, price_usd, appliance_type, description_length
-  Reviews:   sentiment, review_length, cleaned text
+Validates datasets in `data/processed/` to confirm preprocessing outputs are
+schema-complete, internally consistent, and safe for downstream use.
 """
 
 import logging
+import sys
+import os
 import pandas as pd
 import great_expectations as gx
-from great_expectations.dataset import PandasDataset
+from pathlib import Path
 
+try:
+    from great_expectations.dataset import PandasDataset
+except ImportError:
+    from great_expectations.dataset.pandas_dataset import PandasDataset
+
+# Resolve local imports from the validation package.
+current_file_path = Path(__file__).resolve()
+validation_dir = current_file_path.parent.parent
+if str(validation_dir) not in sys.path:
+    sys.path.insert(0, str(validation_dir))
+
+def _find_pipeline_root(start: Path) -> Path:
+    for candidate in [start, *start.parents]:
+        if (candidate / "data").exists() and (candidate / "config").exists():
+            return candidate
+    return current_file_path.parents[4]  # fallback: .../data-pipeline/
+
+
+# Ensure running from data-pipeline root so relative data paths work
+pipeline_root = _find_pipeline_root(current_file_path.parent)
+if os.getcwd() != str(pipeline_root):
+    os.chdir(pipeline_root)
+
+from typing import Optional, List
 from validation_config import (
     CheckResult, Severity, ValidationReport, load_thresholds,
 )
@@ -50,11 +70,10 @@ def _check(ge_result: dict, name: str, severity: Severity,
 # ═══════════════════════════════════════════════════════════════════════════
 
 FINANCIAL_PROCESSED_COLS = [
-    "user_id", "income_usd", "monthly_expenses", "monthly_savings",
-    "total_fixed_expenses",
+    "user_id", "monthly_income", "monthly_expenses", "savings_balance",
 ]
 FINANCIAL_OPTIONAL_PROCESSED = [
-    "income_missing", "has_loan", "loan_amount", "monthly_emi",
+    "has_loan", "loan_amount", "monthly_emi",
     "credit_score", "employment_status", "region",
 ]
 
@@ -74,28 +93,30 @@ def validate_financial_processed(path: str, raw_path: str,
                               f"Processed column '{col}' must exist"))
 
     # ── 2. No new nulls in required fields ────────────────────────────────
-    for col in ["income_usd", "monthly_expenses", "total_fixed_expenses"]:
+    for col in ["monthly_income", "monthly_expenses", "savings_balance"]:
         if col not in gdf.columns:
             continue
-        # After median imputation, these should have ZERO nulls
+        # Required processed financial columns should have no nulls
         res = gdf.expect_column_values_to_not_be_null(col)
         results.append(_check(res, f"fin_proc_no_nulls_{col}", Severity.CRITICAL, ds,
-                              f"'{col}' should have no nulls after imputation"))
+                              f"'{col}' should have no nulls after processing"))
 
     # ── 3. USD suffix columns are numeric and >= 0 ────────────────────────
-    for col in ["income_usd", "monthly_expenses", "monthly_savings", "total_fixed_expenses"]:
+    for col in ["monthly_income", "monthly_expenses", "savings_balance"]:
         if col not in gdf.columns:
             continue
-        res = gdf.expect_column_values_to_be_between(col, min_value=0)
+        min_value = -1_000_000 if col == "savings_balance" else 0
+        res = gdf.expect_column_values_to_be_between(col, min_value=min_value)
         results.append(_check(res, f"fin_proc_{col}_non_negative", Severity.WARNING, ds,
-                              f"'{col}' should be >= 0 after processing"))
+                              f"'{col}' should be within expected range after processing"))
 
     # ── 4. Values rounded to 2 decimals ───────────────────────────────────
-    for col in ["income_usd", "monthly_expenses", "monthly_savings", "total_fixed_expenses"]:
+    for col in ["monthly_income", "monthly_expenses", "savings_balance"]:
         if col not in gdf.columns:
             continue
-        # Check that values have at most 2 decimal places
-        not_rounded = (gdf[col].dropna() * 100 % 1 > 0.001).sum()
+        # Check values are rounded to 2 decimals (tolerance for float precision)
+        vals = gdf[col].dropna()
+        not_rounded = (vals.sub(vals.round(2)).abs() > 0.001).sum()
         pct_bad = not_rounded / max(len(gdf), 1)
         results.append(CheckResult(
             check_name=f"fin_proc_{col}_rounded",
@@ -105,11 +126,11 @@ def validate_financial_processed(path: str, raw_path: str,
             metric_value=round(pct_bad, 4),
         ))
 
-    # ── 5. income_missing flag is boolean (if present) ────────────────────
-    if "income_missing" in gdf.columns:
-        res = gdf.expect_column_values_to_be_in_set("income_missing", [True, False, 0, 1])
-        results.append(_check(res, "fin_proc_income_missing_bool", Severity.WARNING, ds,
-                              "income_missing should be boolean"))
+    # ── 5. has_loan flag is boolean-like (if present) ─────────────────────
+    if "has_loan" in gdf.columns:
+        res = gdf.expect_column_values_to_be_in_set("has_loan", [True, False, 0, 1])
+        results.append(_check(res, "fin_proc_has_loan_bool", Severity.WARNING, ds,
+                              "has_loan should be boolean"))
 
     # ── 6. Record count comparison (raw vs processed) ─────────────────────
     try:
@@ -141,15 +162,16 @@ def validate_financial_processed(path: str, raw_path: str,
             metric_value=dup_count,
         ))
 
-    # ── 8. total_fixed_expenses <= monthly_expenses (sanity) ──────────────
-    if "total_fixed_expenses" in gdf.columns and "monthly_expenses" in gdf.columns:
-        violations = (gdf["total_fixed_expenses"] > gdf["monthly_expenses"]).sum()
+    # ── 8. monthly_emi vs monthly_expenses (sanity, if available) ─────────
+    # EMI can exceed expenses in valid cases (e.g. expenses = non-housing; EMI = mortgage)
+    if "monthly_emi" in gdf.columns and "monthly_expenses" in gdf.columns:
+        violations = (gdf["monthly_emi"] > gdf["monthly_expenses"]).sum()
         pct = violations / max(len(gdf), 1)
         results.append(CheckResult(
-            check_name="fin_proc_fixed_lte_total",
-            passed=pct < 0.05,
-            severity=Severity.WARNING, dataset=ds, stage="processed",
-            details=f"{violations} rows where fixed_expenses > total_expenses ({pct:.1%})",
+            check_name="fin_proc_emi_lte_total",
+            passed=pct < 0.50,  # Flag only if >50% violate (likely data definition issue)
+            severity=Severity.INFO, dataset=ds, stage="processed",
+            details=f"{violations} rows where monthly_emi > monthly_expenses ({pct:.1%})",
             metric_value=round(pct, 4),
         ))
 
@@ -161,7 +183,7 @@ def validate_financial_processed(path: str, raw_path: str,
 # ═══════════════════════════════════════════════════════════════════════════
 
 PRODUCT_PROCESSED_COLS = [
-    "product_id", "product_name", "price_usd",
+    "product_id", "product_name", "price",
 ]
 PRODUCT_OPTIONAL_PROCESSED = [
     "average_rating", "rating_number", "description", "features",
@@ -189,16 +211,16 @@ def validate_products_processed(path: str, raw_path: str,
         results.append(_check(res, "prod_proc_name_non_empty", Severity.WARNING, ds,
                               "product_name should not be empty after cleaning"))
 
-    # ── 3. price_usd valid ────────────────────────────────────────────────
-    if "price_usd" in gdf.columns:
-        res = gdf.expect_column_values_to_be_between("price_usd", min_value=0.01, max_value=100_000)
+    # ── 3. Price valid range and no nulls (critical) ──────────────────────
+    if "price" in gdf.columns:
+        res = gdf.expect_column_values_to_be_between("price", min_value=0.01, max_value=100_000)
         results.append(_check(res, "prod_proc_price_range", Severity.WARNING, ds,
-                              "price_usd should be $0.01–$100,000"))
+                              "price should be $0.01–$100,000"))
 
         # No nulls in price after processing
-        res = gdf.expect_column_values_to_not_be_null("price_usd")
+        res = gdf.expect_column_values_to_not_be_null("price")
         results.append(_check(res, "prod_proc_price_no_nulls", Severity.CRITICAL, ds,
-                              "price_usd must not be null after processing"))
+                              "price must not be null after processing"))
 
     # ── 4. main_category should be dropped (constant column) ──────────────
     if "main_category" in gdf.columns:
@@ -377,13 +399,13 @@ def validate_reviews_processed(path: str, raw_path: str,
 # ═══════════════════════════════════════════════════════════════════════════
 
 def run_processed_validation(
-    financial_path: str = "data/processed/financial_processed.csv",
-    products_path: str = "data/processed/products_processed.csv",
-    reviews_path: str = "data/processed/reviews_processed.csv",
-    raw_financial: str = "data/raw/financial.csv",
-    raw_products: str = "data/raw/products.jsonl",
-    raw_reviews: str = "data/raw/reviews.jsonl",
-    threshold_config: str | None = "config/validation_thresholds.json",
+    financial_path: str = "data/processed/financial_preprocessed.csv",
+    products_path: str = "data/processed/product_preprocessed.jsonl",
+    reviews_path: str = "data/processed/review_preprocessed.jsonl",
+    raw_financial: str = "data/raw/financial_data.csv",
+    raw_products: str = "data/raw/product_data.jsonl",
+    raw_reviews: str = "data/raw/review_data.jsonl",
+    threshold_config: Optional[str] = "config/validation_thresholds.json",
 ) -> ValidationReport:
     """Run all processed data validations."""
     thresholds = load_thresholds(threshold_config)
@@ -425,12 +447,12 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
     parser = argparse.ArgumentParser(description="Validate processed SavVio data")
-    parser.add_argument("--financial", default="data/processed/financial_processed.csv")
-    parser.add_argument("--products", default="data/processed/products_processed.csv")
-    parser.add_argument("--reviews", default="data/processed/reviews_processed.csv")
-    parser.add_argument("--raw-financial", default="data/raw/financial.csv")
-    parser.add_argument("--raw-products", default="data/raw/products.jsonl")
-    parser.add_argument("--raw-reviews", default="data/raw/reviews.jsonl")
+    parser.add_argument("--financial", default="data/processed/financial_preprocessed.csv")
+    parser.add_argument("--products", default="data/processed/product_preprocessed.jsonl")
+    parser.add_argument("--reviews", default="data/processed/review_preprocessed.jsonl")
+    parser.add_argument("--raw-financial", default="data/raw/financial_data.csv")
+    parser.add_argument("--raw-products", default="data/raw/product_data.jsonl")
+    parser.add_argument("--raw-reviews", default="data/raw/review_data.jsonl")
     parser.add_argument("--thresholds", default=None)
     args = parser.parse_args()
 

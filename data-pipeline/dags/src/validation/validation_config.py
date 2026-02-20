@@ -15,7 +15,7 @@ from dataclasses import dataclass, field, asdict
 from datetime import datetime
 from enum import IntEnum
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -150,7 +150,7 @@ DEFAULT_THRESHOLDS = {
 }
 
 
-def load_thresholds(config_path: str | None = None) -> dict:
+def load_thresholds(config_path: Optional[str] = None) -> dict:
     """Load thresholds from JSON file, falling back to defaults."""
     thresholds = DEFAULT_THRESHOLDS.copy()
     if config_path and os.path.exists(config_path):

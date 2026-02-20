@@ -1,22 +1,48 @@
 """
 Feature validation for SavVio pipeline (Phase 12).
 
-Validates engineered features in data/validated/ to ensure
+Validates engineered features in data/features/ to ensure
 calculations are correct, values are within expected ranges,
 and no NaN/Inf values were introduced.
 
 Feature groups:
   - Financial health: discretionary_income, debt_to_income_ratio, etc.
-  - Affordability: price_to_income_ratio, affordability_score, RUS
-  - Review-based: avg_product_rating, num_reviews, rating_variance
+  - Affordability: price_to_income_ratio, affordability_score, RUS (computed at inference)
+  - Review-based: rating_variance
 """
 
 import logging
+import sys
+import os
 import numpy as np
 import pandas as pd
 import great_expectations as gx
-from great_expectations.dataset import PandasDataset
+from pathlib import Path
 
+try:
+    from great_expectations.dataset import PandasDataset
+except ImportError:
+    from great_expectations.dataset.pandas_dataset import PandasDataset
+
+# Resolve local imports from the validation package.
+current_file_path = Path(__file__).resolve()
+validation_dir = current_file_path.parent.parent
+if str(validation_dir) not in sys.path:
+    sys.path.insert(0, str(validation_dir))
+
+def _find_pipeline_root(start: Path) -> Path:
+    for candidate in [start, *start.parents]:
+        if (candidate / "data").exists() and (candidate / "config").exists():
+            return candidate
+    return current_file_path.parents[4]  # fallback: .../data-pipeline/
+
+
+# Ensure running from data-pipeline root so relative data paths work
+pipeline_root = _find_pipeline_root(current_file_path.parent)
+if os.getcwd() != str(pipeline_root):
+    os.chdir(pipeline_root)
+
+from typing import Optional, List
 from validation_config import (
     CheckResult, Severity, ValidationReport, load_thresholds,
 )
@@ -223,16 +249,18 @@ def validate_affordability_features(gdf: PandasDataset,
 # ═══════════════════════════════════════════════════════════════════════════
 
 REVIEW_FEATURES = [
-    "avg_product_rating",
-    "num_reviews",
     "rating_variance",
-    "has_text_reviews",
 ]
 
 
 def validate_review_features(gdf: PandasDataset,
                               thresholds: dict) -> list[CheckResult]:
-    """Validate review-based features."""
+    """Validate review-based features.
+
+    Only rating_variance is engineered here. avg_product_rating and
+    rating_number already exist in the product metadata (product_preprocessed.jsonl).
+    has_text_reviews is not a useful signal for affordability scoring.
+    """
     results: list[CheckResult] = []
     ds = "review_features"
 
@@ -246,31 +274,11 @@ def validate_review_features(gdf: PandasDataset,
     for col in REVIEW_FEATURES:
         results.extend(_no_nan_inf(gdf, col, ds, Severity.WARNING))
 
-    # ── 3. avg_product_rating in 1–5 ─────────────────────────────────────
-    if "avg_product_rating" in gdf.columns:
-        res = gdf.expect_column_values_to_be_between(
-            "avg_product_rating", min_value=1.0, max_value=5.0
-        )
-        results.append(_check(res, "feat_avg_rating_range", Severity.CRITICAL, ds,
-                              "avg_product_rating must be 1.0–5.0"))
-
-    # ── 4. num_reviews >= 0 ───────────────────────────────────────────────
-    if "num_reviews" in gdf.columns:
-        res = gdf.expect_column_values_to_be_between("num_reviews", min_value=0)
-        results.append(_check(res, "feat_num_reviews_non_negative", Severity.CRITICAL, ds,
-                              "num_reviews must be >= 0"))
-
-    # ── 5. rating_variance >= 0 ───────────────────────────────────────────
+    # ── 3. rating_variance >= 0 ───────────────────────────────────────────
     if "rating_variance" in gdf.columns:
         res = gdf.expect_column_values_to_be_between("rating_variance", min_value=0)
         results.append(_check(res, "feat_rating_variance_non_negative", Severity.WARNING, ds,
                               "rating_variance must be >= 0"))
-
-    # ── 6. has_text_reviews is binary ─────────────────────────────────────
-    if "has_text_reviews" in gdf.columns:
-        res = gdf.expect_column_values_to_be_in_set("has_text_reviews", [0, 1, True, False])
-        results.append(_check(res, "feat_has_text_binary", Severity.WARNING, ds,
-                              "has_text_reviews should be 0/1"))
 
     return results
 
@@ -357,8 +365,9 @@ def validate_formula_spot_checks(gdf: PandasDataset) -> list[CheckResult]:
 # ═══════════════════════════════════════════════════════════════════════════
 
 def run_feature_validation(
-    features_path: str = "data/validated/features.csv",
-    threshold_config: str | None = "config/validation_thresholds.json",
+    financial_path: str = "data/features/financial_featured.csv",
+    reviews_path: str = "data/features/product_rating_variance.csv",
+    threshold_config: Optional[str] = "config/validation_thresholds.json",
 ) -> ValidationReport:
     """Run all feature validations."""
     thresholds = load_thresholds(threshold_config)
@@ -368,23 +377,56 @@ def run_feature_validation(
     logger.info("  FEATURE VALIDATION")
     logger.info("═" * 50)
 
-    gdf = _load(features_path)
+    # 1. Validate Financial Features
+    if Path(financial_path).exists():
+        logger.info(f"── Validating financial health features from {financial_path} ──")
+        try:
+            gdf_fin = _load(financial_path)
+            for r in validate_financial_features(gdf_fin, thresholds):
+                report.add(r)
+            
+            logger.info("── Running formula spot-checks (Financial) ──")
+            for r in validate_formula_spot_checks(gdf_fin):
+                report.add(r)
+        except Exception as e:
+            logger.error(f"Failed to validate financial features: {e}")
+            report.add(CheckResult("load_financial_features", False, Severity.CRITICAL, "financial_features", "features", str(e), 0))
+    else:
+        logger.warning(f"Financial features file not found: {financial_path}")
+        report.add(CheckResult(
+            check_name="load_financial_features_missing",
+            passed=False,
+            severity=Severity.CRITICAL,
+            dataset="financial_features",
+            stage="features",
+            details=f"Required feature file not found: {financial_path}",
+            metric_value=0,
+        ))
 
-    logger.info("── Validating financial health features ──")
-    for r in validate_financial_features(gdf, thresholds):
-        report.add(r)
+    # 2. Validate Review Features
+    if Path(reviews_path).exists():
+        logger.info(f"── Validating review-based features from {reviews_path} ──")
+        try:
+            gdf_rev = _load(reviews_path)
+            for r in validate_review_features(gdf_rev, thresholds):
+                report.add(r)
+        except Exception as e:
+            logger.error(f"Failed to validate review features: {e}")
+            report.add(CheckResult("load_review_features", False, Severity.CRITICAL, "review_features", "features", str(e), 0))
+    else:
+        logger.warning(f"Review features file not found: {reviews_path}")
+        report.add(CheckResult(
+            check_name="load_review_features_missing",
+            passed=False,
+            severity=Severity.CRITICAL,
+            dataset="review_features",
+            stage="features",
+            details=f"Required feature file not found: {reviews_path}",
+            metric_value=0,
+        ))
 
-    logger.info("── Validating affordability features ──")
-    for r in validate_affordability_features(gdf, thresholds):
-        report.add(r)
-
-    logger.info("── Validating review-based features ──")
-    for r in validate_review_features(gdf, thresholds):
-        report.add(r)
-
-    logger.info("── Running formula spot-checks ──")
-    for r in validate_formula_spot_checks(gdf):
-        report.add(r)
+    # 3. Affordability Features (Skipped as per run_features.py/README update)
+    logger.info("── Skipping affordability features (computed at inference time) ──")
 
     report.print_summary()
     report.save()
@@ -406,11 +448,12 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
     parser = argparse.ArgumentParser(description="Validate SavVio features")
-    parser.add_argument("--features", default="data/validated/features.csv")
+    parser.add_argument("--financial-features", default="data/features/financial_featured.csv")
+    parser.add_argument("--review-features", default="data/features/product_rating_variance.csv")
     parser.add_argument("--thresholds", default=None)
     args = parser.parse_args()
 
-    report = run_feature_validation(args.features, args.thresholds)
+    report = run_feature_validation(args.financial_features, args.review_features, args.thresholds)
 
     if not report.passed:
         exit(1)

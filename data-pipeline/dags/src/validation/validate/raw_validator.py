@@ -1,20 +1,41 @@
-"""
-Raw data validation for SavVio pipeline (Phase 6).
+"""Raw-stage validation checks.
 
-Validates ingested data in data/raw/ against expected schemas
-using Great Expectations, wrapped with configurable severity levels.
-
-Datasets:
-  - financial.csv        (CSV)
-  - products.jsonl       (JSONL)
-  - reviews.jsonl        (JSONL)
+Validates source datasets in `data/raw/` using Great Expectations and
+project-specific rule checks mapped to INFO/WARNING/CRITICAL severities.
 """
 
 import logging
+import sys
+import os
 import pandas as pd
+import great_expectations
 import great_expectations as gx
-from great_expectations.dataset import PandasDataset
+from pathlib import Path
 
+try:
+    from great_expectations.dataset import PandasDataset
+except ImportError:
+    from great_expectations.dataset.pandas_dataset import PandasDataset
+
+# Resolve local imports from the validation package.
+current_file_path = Path(__file__).resolve()
+validation_dir = current_file_path.parent.parent  # .../dags/src/validation/
+if str(validation_dir) not in sys.path:
+    sys.path.insert(0, str(validation_dir))
+
+def _find_pipeline_root(start: Path) -> Path:
+    for candidate in [start, *start.parents]:
+        if (candidate / "data").exists() and (candidate / "config").exists():
+            return candidate
+    return current_file_path.parents[4]  # fallback: .../data-pipeline/
+
+
+# Ensure running from data-pipeline root so relative data paths work
+pipeline_root = _find_pipeline_root(current_file_path.parent)
+if os.getcwd() != str(pipeline_root):
+    os.chdir(pipeline_root)
+
+from typing import Optional, List
 from validation_config import (
     CheckResult, Severity, ValidationReport, load_thresholds,
 )
@@ -58,15 +79,15 @@ def _check(ge_result: dict, name: str, severity: Severity,
 # ═══════════════════════════════════════════════════════════════════════════
 
 FINANCIAL_REQUIRED_COLS = [
-    "user_id", "monthly_income", "monthly_expenses", "savings_balance",
+    "user_id", "monthly_income_usd", "monthly_expenses_usd", "savings_usd",
 ]
 FINANCIAL_OPTIONAL_COLS = [
-    "has_loan", "loan_amount", "monthly_emi", "loan_interest_rate",
+    "has_loan", "loan_amount_usd", "monthly_emi_usd", "loan_interest_rate_pct",
     "loan_term_months", "credit_score", "employment_status", "region",
 ]
 FINANCIAL_NUMERIC_COLS = [
-    "monthly_income", "monthly_expenses", "savings_balance",
-    "loan_amount", "monthly_emi", "loan_interest_rate",
+    "monthly_income_usd", "monthly_expenses_usd", "savings_usd",
+    "loan_amount_usd", "monthly_emi_usd", "loan_interest_rate_pct",
     "loan_term_months", "credit_score",
 ]
 
@@ -135,23 +156,23 @@ def validate_financial_raw(path: str, thresholds: dict) -> list[CheckResult]:
                               f"Column '{col}' must be numeric"))
 
     # ── 6. Value range checks ─────────────────────────────────────────────
-    # monthly_income >= 0
-    if "monthly_income" in gdf.columns:
-        res = gdf.expect_column_values_to_be_between("monthly_income", min_value=0)
+    # monthly_income_usd >= 0
+    if "monthly_income_usd" in gdf.columns:
+        res = gdf.expect_column_values_to_be_between("monthly_income_usd", min_value=0)
         results.append(_check(res, "fin_income_non_negative", Severity.WARNING, ds,
-                              "monthly_income should be >= 0"))
+                              "monthly_income_usd should be >= 0"))
 
-    # monthly_expenses >= 0
-    if "monthly_expenses" in gdf.columns:
-        res = gdf.expect_column_values_to_be_between("monthly_expenses", min_value=0)
+    # monthly_expenses_usd >= 0
+    if "monthly_expenses_usd" in gdf.columns:
+        res = gdf.expect_column_values_to_be_between("monthly_expenses_usd", min_value=0)
         results.append(_check(res, "fin_expenses_non_negative", Severity.WARNING, ds,
-                              "monthly_expenses should be >= 0"))
+                              "monthly_expenses_usd should be >= 0"))
 
-    # savings_balance (can be negative but flag extreme)
-    if "savings_balance" in gdf.columns:
-        res = gdf.expect_column_values_to_be_between("savings_balance", min_value=-1_000_000, max_value=10_000_000)
+    # savings_usd (can be negative but flag extreme)
+    if "savings_usd" in gdf.columns:
+        res = gdf.expect_column_values_to_be_between("savings_usd", min_value=-1_000_000, max_value=10_000_000)
         results.append(_check(res, "fin_savings_range", Severity.WARNING, ds,
-                              "savings_balance outside plausible range"))
+                              "savings_usd outside plausible range"))
 
     # credit_score 300–850
     if "credit_score" in gdf.columns:
@@ -159,11 +180,11 @@ def validate_financial_raw(path: str, thresholds: dict) -> list[CheckResult]:
         results.append(_check(res, "fin_credit_score_range", Severity.WARNING, ds,
                               "credit_score should be 300–850"))
 
-    # loan_interest_rate 0–100
-    if "loan_interest_rate" in gdf.columns:
-        res = gdf.expect_column_values_to_be_between("loan_interest_rate", min_value=0, max_value=100)
+    # loan_interest_rate_pct 0–100
+    if "loan_interest_rate_pct" in gdf.columns:
+        res = gdf.expect_column_values_to_be_between("loan_interest_rate_pct", min_value=0, max_value=100)
         results.append(_check(res, "fin_interest_rate_range", Severity.INFO, ds,
-                              "loan_interest_rate should be 0–100"))
+                              "loan_interest_rate_pct should be 0–100"))
 
     # ── 7. Duplicate check ────────────────────────────────────────────────
     if "user_id" in gdf.columns:
@@ -184,7 +205,7 @@ def validate_financial_raw(path: str, thresholds: dict) -> list[CheckResult]:
     # ── 8. employment_status valid set ────────────────────────────────────
     if "employment_status" in gdf.columns:
         valid_statuses = ["employed", "self-employed", "unemployed", "retired",
-                          "student", "part-time", "freelance"]
+                          "student", "part-time", "freelance", "Employed", "Self-employed", "Unemployed", "Retired", "Student"] # Add capitalized versions seen in head
         res = gdf.expect_column_values_to_be_in_set(
             "employment_status", valid_statuses, mostly=0.95
         )
@@ -243,6 +264,11 @@ def validate_products_raw(path: str, thresholds: dict) -> list[CheckResult]:
             sev = Severity.CRITICAL
         elif null_pct > thresholds["null_pct_warning"]:
             sev = Severity.WARNING
+        
+        # DOWNGRADE severity for 'price' because preprocessing imputes missing values
+        if col == "price" and sev == Severity.CRITICAL:
+            sev = Severity.WARNING
+
         res = gdf.expect_column_values_to_not_be_null(col, mostly=1 - thresholds["null_pct_warning"])
         results.append(_check(res, f"prod_nulls_{col}", sev, ds,
                               f"Null % = {null_pct:.2%}"))
@@ -435,10 +461,10 @@ def validate_cross_references(products_path: str, reviews_path: str) -> list[Che
 # ═══════════════════════════════════════════════════════════════════════════
 
 def run_raw_validation(
-    financial_path: str = "data/raw/financial.csv",
-    products_path: str = "data/raw/products.jsonl",
-    reviews_path: str = "data/raw/reviews.jsonl",
-    threshold_config: str | None = "config/validation_thresholds.json",
+    financial_path: str = "data/raw/financial_data.csv",
+    products_path: str = "data/raw/product_data.jsonl",
+    reviews_path: str = "data/raw/review_data.jsonl",
+    threshold_config: Optional[str] = "config/validation_thresholds.json",
 ) -> ValidationReport:
     """
     Run all raw data validations.
@@ -491,9 +517,9 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
     parser = argparse.ArgumentParser(description="Validate raw SavVio data")
-    parser.add_argument("--financial", default="data/raw/financial.csv")
-    parser.add_argument("--products", default="data/raw/products.jsonl")
-    parser.add_argument("--reviews", default="data/raw/reviews.jsonl")
+    parser.add_argument("--financial", default="data/raw/financial_data.csv")
+    parser.add_argument("--products", default="data/raw/product_data.jsonl")
+    parser.add_argument("--reviews", default="data/raw/review_data.jsonl")
     parser.add_argument("--thresholds", default=None)
     args = parser.parse_args()
 
