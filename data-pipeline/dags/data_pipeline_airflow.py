@@ -6,6 +6,7 @@ from src.ingestion.run_ingestion import ingest_financial_task, ingest_product_ta
 from src.preprocess.run_preprocessing import preprocess_financial_task, preprocess_product_task, preprocess_review_task
 from src.features.run_features import feature_financial_task, feature_review_task
 from src.database.run_database import load_financial_task, load_products_task, load_reviews_task, generate_and_load_embedding_task
+from src.validation.run_validation import validate_raw, validate_processed, validate_features, validate_raw_anomalies
 
 from datetime import datetime, timedelta
 from airflow import DAG
@@ -158,7 +159,31 @@ ingest_reviews = PythonOperator(
 )
 
 #----------------------------------------------------
-# Data Preprocessing  (runs in PARALLEL)
+# Raw Data Validation  (after ingestion)
+#----------------------------------------------------
+
+validate_raw_data = PythonOperator(
+    task_id='validate_raw_data',
+    python_callable=validate_raw,
+    dag=dag,
+)
+
+validate_raw_anomaly = PythonOperator(
+    task_id='validate_raw_anomalies',
+    python_callable=validate_raw_anomalies,
+    dag=dag,
+)
+
+# Ingestion → Raw validation (both run after ingestion completes)
+[ingest_financial, ingest_products, ingest_reviews] >> validate_raw_data
+[ingest_financial, ingest_products, ingest_reviews] >> validate_raw_anomaly  # INFO-only, non-gating
+
+# Ingestion error alerts (fire only if any ingestion task fails)
+[ingest_financial, ingest_products, ingest_reviews] >> error_at_ingestion
+[ingest_financial, ingest_products, ingest_reviews] >> slack_error_at_ingestion
+
+#----------------------------------------------------
+# Data Preprocessing  (runs in PARALLEL, after raw validation passes)
 #----------------------------------------------------
 
 preprocess_financial = PythonOperator(
@@ -179,15 +204,28 @@ preprocess_reviews = PythonOperator(
     dag=dag,
 )
 
-# Ingestion fan-in → Preprocessing (all three run in parallel)
-[ingest_financial, ingest_products, ingest_reviews] >> [preprocess_financial, preprocess_products, preprocess_reviews]
-
-# Ingestion error alerts (fire only if any ingestion task fails)
-[ingest_financial, ingest_products, ingest_reviews] >> error_at_ingestion
-[ingest_financial, ingest_products, ingest_reviews] >> slack_error_at_ingestion
+# Raw validation gates preprocessing (anomaly check does NOT gate)
+validate_raw_data >> [preprocess_financial, preprocess_products, preprocess_reviews]
 
 #----------------------------------------------------
-# Feature Engineering  (runs in PARALLEL, after preprocessing)
+# Processed Data Validation  (after preprocessing)
+#----------------------------------------------------
+
+validate_processed_data = PythonOperator(
+    task_id='validate_processed_data',
+    python_callable=validate_processed,
+    dag=dag,
+)
+
+# Preprocessing → Processed validation
+[preprocess_financial, preprocess_products, preprocess_reviews] >> validate_processed_data
+
+# Preprocessing error alerts
+[preprocess_financial, preprocess_products, preprocess_reviews] >> error_at_preprocessing
+[preprocess_financial, preprocess_products, preprocess_reviews] >> slack_error_at_preprocessing
+
+#----------------------------------------------------
+# Feature Engineering  (runs in PARALLEL, after processed validation passes)
 #----------------------------------------------------
 
 feature_financial = PythonOperator(
@@ -202,17 +240,26 @@ feature_reviews = PythonOperator(
     dag=dag,
 )
 
-# Preprocessing fan-in → Feature Engineering (both run in parallel)
-[preprocess_financial, preprocess_products, preprocess_reviews] >> [feature_financial, feature_reviews]
-
-# Preprocessing error alerts
-[preprocess_financial, preprocess_products, preprocess_reviews] >> error_at_preprocessing
-[preprocess_financial, preprocess_products, preprocess_reviews] >> slack_error_at_preprocessing
+# Processed validation gates feature engineering
+validate_processed_data >> [feature_financial, feature_reviews]
 
 
 
 #----------------------------------------------------
-# Airflow DAG for Loading Featured Data into PostgreSQL
+# Featured Data Validation  (after feature engineering)
+#----------------------------------------------------
+
+validate_featured_data = PythonOperator(
+    task_id='validate_featured_data',
+    python_callable=validate_features,
+    dag=dag,
+)
+
+# Feature engineering → Featured validation
+[feature_financial, feature_reviews] >> validate_featured_data
+
+#----------------------------------------------------
+# Loading Featured Data into PostgreSQL  (after featured validation passes)
 #----------------------------------------------------
 
 load_financial = PythonOperator(
@@ -238,6 +285,9 @@ generate_load_embeddings = PythonOperator(
     python_callable=generate_and_load_embedding_task,
     dag=dag,
 )
+
+# Featured validation gates DB loading
+validate_featured_data >> [load_financial, load_product, load_review]
 
 [load_financial, load_product, load_review] >> generate_load_embeddings
 
