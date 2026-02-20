@@ -1,6 +1,6 @@
 import pandas as pd
 import pytest
-from preprocess_scripts.preprocess.financial import preprocess_financial_data
+from preprocess.financial import preprocess_financial_data
 
 def test_validation_invalid_types(tmp_path):
     """測試：當數值欄位包含文字時，系統應該能正確處理（轉為 NaN 或報錯）"""

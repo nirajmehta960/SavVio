@@ -1,7 +1,7 @@
 import pandas as pd
 import pytest
 import os
-from preprocess_scripts.preprocess.financial import preprocess_financial_data
+from preprocess.financial import preprocess_financial_data
 
 def test_database_export_format(tmp_path):
     """測試：驗證預處理後的資料格式是否符合資料庫匯入要求"""

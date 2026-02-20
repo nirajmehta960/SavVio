@@ -1,6 +1,6 @@
 import pandas as pd
 import pytest
-from preprocess_scripts.preprocess.financial import preprocess_financial_data
+from preprocess.financial import preprocess_financial_data
 
 def test_bias_region_distribution(tmp_path):
     """測試：確保預處理過程不會導致特定地區的資料被不對稱地大量刪除"""

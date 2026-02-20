@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 import pytest
-from preprocess_scripts.preprocess.financial import preprocess_financial_data
+from preprocess.financial import preprocess_financial_data
 
 def test_feature_creation_logic(tmp_path):
     """測試：驗證預處理後的資料是否包含正確的特徵欄位與型別"""
@@ -30,7 +30,7 @@ def test_feature_creation_logic(tmp_path):
     processed = preprocess_financial_data(str(in_p), str(out_p))
     
     # 驗證 1：數值是否正確轉換（例如 income_usd 是否對應原始的 10000）
-    assert processed.iloc[0]["income_usd"] == 10000
+    assert processed.iloc[0]["monthly_income"] == 10000
     
     # 驗證 2：類別是否正確轉換（'Yes' 應變為 1）
     assert processed.iloc[0]["has_loan"] == 1

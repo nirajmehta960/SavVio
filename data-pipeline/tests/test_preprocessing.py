@@ -1,6 +1,6 @@
 import pandas as pd
 import pytest
-from preprocess_scripts.preprocess.financial import preprocess_financial_data
+from preprocess.financial import preprocess_financial_data
 
 def test_financial_columns_exist(tmp_path):
     # 1. 建立假資料
@@ -31,4 +31,4 @@ def test_financial_columns_exist(tmp_path):
 
     # 5. 驗證結果
     assert not processed.empty
-    assert "income_usd" in processed.columns
+    assert "monthly_income" in processed.columns

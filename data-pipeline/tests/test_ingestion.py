@@ -1,6 +1,6 @@
 import pytest
 import os
-from preprocess_scripts.preprocess.financial import preprocess_financial_data
+from preprocess.financial import preprocess_financial_data
 
 def test_ingestion_file_not_found():
     """測試：當 CSV 檔案不存在時，應該拋出 FileNotFoundError"""

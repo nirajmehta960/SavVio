@@ -1,6 +1,6 @@
 import pandas as pd
 import pytest
-from preprocess_scripts.preprocess.financial import preprocess_financial_data
+from preprocess.financial import preprocess_financial_data
 
 def test_anomaly_extreme_values(tmp_path):
     """測試：驗證當數值超出業務邏輯範圍時（例如信用分數為負或過高），資料是否被剔除"""
