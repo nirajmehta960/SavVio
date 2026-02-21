@@ -53,6 +53,7 @@ ENV/
 data-pipeline/data/raw/*
 data-pipeline/data/processed/*
 data-pipeline/data/validated/*
+data-pipeline/dags/data/quarantine/
 !data-pipeline/data/raw/.gitkeep
 !data-pipeline/data/processed/.gitkeep
 !data-pipeline/data/validated/.gitkeep
