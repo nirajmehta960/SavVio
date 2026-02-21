@@ -33,8 +33,8 @@ def main():
     parser.add_argument("--skip-affordability", action="store_true", help="Skip affordability features")
     args = parser.parse_args()
 
-    # Resolve data paths.
-    BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    # Resolve data paths (data is at dags/data).
+    BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     DATA_DIR = os.path.join(BASE_DIR, "data")
     
     # Financial input/output files.
@@ -76,7 +76,7 @@ def main():
 def feature_financial_task(**context):
     """Airflow task: run financial feature engineering."""
     logger.info(">>> Running Financial Feature Engineering...")
-    BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     DATA_DIR = os.path.join(BASE_DIR, "data")
     run_financial_features(
         input_path=os.path.join(DATA_DIR, "processed/financial_preprocessed.csv"),
@@ -88,7 +88,7 @@ def feature_financial_task(**context):
 def feature_review_task(**context):
     """Airflow task: run review feature engineering."""
     logger.info(">>> Running Review Feature Engineering...")
-    BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     DATA_DIR = os.path.join(BASE_DIR, "data")
     run_review_features(
         reviews_path=os.path.join(DATA_DIR, "processed/review_preprocessed.jsonl"),
