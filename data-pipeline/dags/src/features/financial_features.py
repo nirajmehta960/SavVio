@@ -60,9 +60,9 @@ def calculate_ratios(df: pd.DataFrame) -> pd.DataFrame:
         np.nan
     )
 
-    # Metric 4: Financial Runway.
+    # Metric 4: Emergency Fund Months.
     # Definition: Number of months a user could survive on their current savings if they lost their income.
-    df["financial_runway"] = np.where(
+    df["emergency_fund_months"] = np.where(
         (df["monthly_expenses"] + df["monthly_emi"]) > 0,
         df["savings_balance"] / (df["monthly_expenses"] + df["monthly_emi"]),
         np.nan
@@ -90,7 +90,7 @@ def run_financial_features(input_path: str, output_path: str) -> None:
 
         # Cleanup values before persisting output.
         # Keep undefined ratios as NaN; only normalize arithmetic output column.
-        ratio_cols = ["debt_to_income_ratio", "saving_to_income_ratio", "monthly_expense_burden_ratio", "financial_runway"]
+        ratio_cols = ["debt_to_income_ratio", "saving_to_income_ratio", "monthly_expense_burden_ratio", "emergency_fund_months"]
         df[ratio_cols] = df[ratio_cols].replace([np.inf, -np.inf], np.nan)
         df["discretionary_income"] = df["discretionary_income"].replace([np.inf, -np.inf], np.nan).fillna(0.0)
 
