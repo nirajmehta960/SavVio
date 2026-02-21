@@ -48,8 +48,8 @@ FINANCIAL_COLS = {
     # Feature-engineered (included if present)
     "discretionary_income": "discretionary_income",
     "debt_to_income_ratio": "debt_to_income_ratio",
-    "savings_rate": "savings_rate",
-    "expense_burden_ratio": "expense_burden_ratio",
+    "saving_to_income_ratio": "saving_to_income_ratio",
+    "monthly_expense_burden_ratio": "monthly_expense_burden_ratio",
     "emergency_fund_months": "emergency_fund_months",
 }
 
