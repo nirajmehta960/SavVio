@@ -22,7 +22,7 @@ if str(validation_dir) not in sys.path:
 
 def _find_pipeline_root(start: Path) -> Path:
     for candidate in [start, *start.parents]:
-        if (candidate / "data").exists() and (candidate / "config").exists():
+        if (candidate / "data").exists() and (candidate / "src").exists():
             return candidate
     return current_file_path.parents[4]
 
