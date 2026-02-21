@@ -17,8 +17,8 @@ import pandas as pd
 import numpy as np
 from sqlalchemy import text
 
-from db_config import get_engine, ensure_pgvector
-from models import create_tables
+from db_connection import get_engine, ensure_pgvector
+from db_schema import create_tables
 # free. No API keys, no billing, no rate limits
 from sentence_transformers import SentenceTransformer
 
