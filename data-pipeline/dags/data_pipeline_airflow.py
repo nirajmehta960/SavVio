@@ -15,8 +15,74 @@ from airflow.providers.standard.operators.python import PythonOperator, BranchPy
 from airflow.providers.smtp.operators.smtp import EmailOperator
 from airflow.providers.slack.operators.slack_webhook import SlackWebhookOperator
 from airflow.providers.standard.operators.trigger_dagrun import TriggerDagRunOperator
-from airflow.task.trigger_rule import TriggerRule
 
+
+# ==================== FAILURE CALLBACK ====================
+# Fires ONLY when a task actually fails — NOT on upstream_failed (skipped).
+# This prevents the cascading email/Slack flood.
+
+ALERT_EMAIL = "murtaza.sn786@gmail.com"
+SLACK_CHANNEL = "#group-34"
+
+# Map task_id prefixes to human-readable stage names
+STAGE_LABELS = {
+    "ingest":      "Ingestion",
+    "validate_raw": "Raw Validation",
+    "preprocess":  "Preprocessing",
+    "validate_processed": "Processed Validation",
+    "feature":     "Feature Engineering",
+    "validate_featured": "Featured Validation",
+    "load":        "DB Loading",
+    "generate":    "DB Loading (Embeddings)",
+}
+
+def _get_stage(task_id: str) -> str:
+    """Derive a human-readable stage name from the task_id."""
+    for prefix, label in STAGE_LABELS.items():
+        if task_id.startswith(prefix):
+            return label
+    return task_id
+
+
+def on_failure_alert(context):
+    """
+    on_failure_callback — sends Email + Slack alert when a task ACTUALLY fails.
+    Does NOT fire when a task is merely skipped (upstream_failed).
+    """
+    ti = context["task_instance"]
+    task_id = ti.task_id
+    dag_id = ti.dag_id
+    exec_date = context["logical_date"]
+    stage = _get_stage(task_id)
+    exception = context.get("exception", "Unknown error")
+
+    # ----- Email -----
+    email_task = EmailOperator(
+        task_id=f"_alert_email_{task_id}",
+        to=ALERT_EMAIL,
+        subject=f"SavVio Data Pipeline — Error at {stage}",
+        html_content=(
+            f"<h3>Pipeline Error: {stage}</h3>"
+            f"<p><b>Task:</b> {task_id}</p>"
+            f"<p><b>DAG:</b> {dag_id}</p>"
+            f"<p><b>Execution Date:</b> {exec_date}</p>"
+            f"<p><b>Error:</b> {exception}</p>"
+        ),
+    )
+    email_task.execute(context)
+
+    # ----- Slack -----
+    slack_task = SlackWebhookOperator(
+        task_id=f"_alert_slack_{task_id}",
+        slack_webhook_conn_id="slack_webhook",
+        message=(
+            f":red_circle: *SavVio Data Pipeline* — Error at *{stage}*\n"
+            f">Task: `{task_id}`\n"
+            f">Error: {exception}"
+        ),
+        channel=SLACK_CHANNEL,
+    )
+    slack_task.execute(context)
 
 
 # ---------- Default args ----------
@@ -26,8 +92,9 @@ default_args = {
     'retries': 2,
     'retry_delay': timedelta(minutes=0.3),
     'email': 'murtaza.sn786@gmail.com',
-    'email_on_failure': True,
-    'email_on_retry': False
+    'email_on_failure': False,       # Handled by on_failure_callback instead
+    'email_on_retry': False,
+    'on_failure_callback': on_failure_alert,   # <-- ALL tasks get this
 }
 
 # ---------- DAG ----------
@@ -42,165 +109,12 @@ dag = DAG(
     max_active_runs=1,
 )
 
-# ==================== ERROR ALERT OPERATORS ====================
-
-# --- Ingestion Errors ---
-email_error_at_ingestion = EmailOperator(
-    task_id="send_email_at_ingestion_error",
-    to="murtaza.sn786@gmail.com",
-    subject="SavVio Data Pipeline Airflow - Error at Ingestion",
-    html_content="<p>Something went wrong at Ingestion stage.</p>",
-    trigger_rule=TriggerRule.ONE_FAILED,
-    dag=dag,
-)
-
-slack_error_at_ingestion = SlackWebhookOperator(
-    task_id="send_slack_at_ingestion_error",
-    slack_webhook_conn_id="slack_webhook",
-    message=":red_circle: *SavVio Data Pipeline* — Error at *Ingestion* stage.",
-    channel="#group-34",
-    trigger_rule=TriggerRule.ONE_FAILED,
-    dag=dag,
-)
-
-# --- Raw Validation Errors ---
-email_error_at_raw_validation = EmailOperator(
-    task_id="send_email_at_raw_validation_error",
-    to="murtaza.sn786@gmail.com",
-    subject="SavVio Data Pipeline Airflow - Error at Raw Validation",
-    html_content="<p>Something went wrong at Raw Data Validation stage.</p>",
-    trigger_rule=TriggerRule.ONE_FAILED,
-    dag=dag,
-)
-
-slack_error_at_raw_validation = SlackWebhookOperator(
-    task_id="send_slack_at_raw_validation_error",
-    slack_webhook_conn_id="slack_webhook",
-    message=":red_circle: *SavVio Data Pipeline* — Error at *Raw Validation* stage.",
-    channel="#group-34",
-    trigger_rule=TriggerRule.ONE_FAILED,
-    dag=dag,
-)
-
-# --- Preprocessing Errors ---
-email_error_at_preprocessing = EmailOperator(
-    task_id="send_email_at_preprocessing_error",
-    to="murtaza.sn786@gmail.com",
-    subject="SavVio Data Pipeline Airflow - Error at Preprocessing",
-    html_content="<p>Something went wrong at Preprocessing stage.</p>",
-    trigger_rule=TriggerRule.ONE_FAILED,
-    dag=dag,
-)
-
-slack_error_at_preprocessing = SlackWebhookOperator(
-    task_id="send_slack_at_preprocessing_error",
-    slack_webhook_conn_id="slack_webhook",
-    message=":red_circle: *SavVio Data Pipeline* — Error at *Preprocessing* stage.",
-    channel="#group-34",
-    trigger_rule=TriggerRule.ONE_FAILED,
-    dag=dag,
-)
-
-# --- Processed Validation Errors ---
-email_error_at_processed_validation = EmailOperator(
-    task_id="send_email_at_processed_validation_error",
-    to="murtaza.sn786@gmail.com",
-    subject="SavVio Data Pipeline Airflow - Error at Processed Validation",
-    html_content="<p>Something went wrong at Processed Data Validation stage.</p>",
-    trigger_rule=TriggerRule.ONE_FAILED,
-    dag=dag,
-)
-
-slack_error_at_processed_validation = SlackWebhookOperator(
-    task_id="send_slack_at_processed_validation_error",
-    slack_webhook_conn_id="slack_webhook",
-    message=":red_circle: *SavVio Data Pipeline* — Error at *Processed Validation* stage.",
-    channel="#group-34",
-    trigger_rule=TriggerRule.ONE_FAILED,
-    dag=dag,
-)
-
-# --- Feature Engineering Errors ---
-email_error_at_feature_engineering = EmailOperator(
-    task_id="send_email_at_feature_engineering_error",
-    to="murtaza.sn786@gmail.com",
-    subject="SavVio Data Pipeline Airflow - Error at Feature Engineering",
-    html_content="<p>Something went wrong at Feature Engineering stage.</p>",
-    trigger_rule=TriggerRule.ONE_FAILED,
-    dag=dag,
-)
-
-slack_error_at_feature_engineering = SlackWebhookOperator(
-    task_id="send_slack_at_feature_engineering_error",
-    slack_webhook_conn_id="slack_webhook",
-    message=":red_circle: *SavVio Data Pipeline* — Error at *Feature Engineering* stage.",
-    channel="#group-34",
-    trigger_rule=TriggerRule.ONE_FAILED,
-    dag=dag,
-)
-
-# --- Featured Validation Errors ---
-email_error_at_featured_validation = EmailOperator(
-    task_id="send_email_at_featured_validation_error",
-    to="murtaza.sn786@gmail.com",
-    subject="SavVio Data Pipeline Airflow - Error at Featured Validation",
-    html_content="<p>Something went wrong at Featured Data Validation stage.</p>",
-    trigger_rule=TriggerRule.ONE_FAILED,
-    dag=dag,
-)
-
-slack_error_at_featured_validation = SlackWebhookOperator(
-    task_id="send_slack_at_featured_validation_error",
-    slack_webhook_conn_id="slack_webhook",
-    message=":red_circle: *SavVio Data Pipeline* — Error at *Featured Validation* stage.",
-    channel="#group-34",
-    trigger_rule=TriggerRule.ONE_FAILED,
-    dag=dag,
-)
-
-# --- DB Loading Errors ---
-email_error_at_DB_loading = EmailOperator(
-    task_id="send_email_at_DB_loading_error",
-    to="murtaza.sn786@gmail.com",
-    subject="SavVio Data Pipeline Airflow - Error at DB Loading",
-    html_content="<p>Something went wrong at DB Loading stage.</p>",
-    trigger_rule=TriggerRule.ONE_FAILED,
-    dag=dag,
-)
-
-slack_error_at_DB_loading = SlackWebhookOperator(
-    task_id="send_slack_at_DB_loading_error",
-    slack_webhook_conn_id="slack_webhook",
-    message=":red_circle: *SavVio Data Pipeline* — Error at *DB Loading* stage.",
-    channel="#group-34",
-    trigger_rule=TriggerRule.ONE_FAILED,
-    dag=dag,
-)
-
-# --- Bias Analysis Errors (placeholder) ---
-email_error_at_bias_analysis = EmailOperator(
-    task_id="send_email_at_bias_analysis_error",
-    to="murtaza.sn786@gmail.com",
-    subject="SavVio Data Pipeline Airflow - Error at Bias Analysis",
-    html_content="<p>Something went wrong at Bias Analysis stage.</p>",
-    trigger_rule=TriggerRule.ONE_FAILED,
-    dag=dag,
-)
-
-slack_error_at_bias_analysis = SlackWebhookOperator(
-    task_id="send_slack_at_bias_analysis_error",
-    slack_webhook_conn_id="slack_webhook",
-    message=":red_circle: *SavVio Data Pipeline* — Error at *Bias Analysis* stage.",
-    channel="#group-34",
-    trigger_rule=TriggerRule.ONE_FAILED,
-    dag=dag,
-)
-
 # ==================== SUCCESS ALERT OPERATORS ====================
+# These use default ALL_SUCCESS, so they ONLY fire when the entire pipeline completes.
 
 email_pipeline_success = EmailOperator(
     task_id="send_email_pipeline_success",
-    to="murtaza.sn786@gmail.com",
+    to=ALERT_EMAIL,
     subject="SavVio Data Pipeline Airflow - Pipeline Completed Successfully",
     html_content="<p>All data has been successfully ingested, validated, processed, featured, and loaded into the database.</p>",
     dag=dag,
@@ -210,7 +124,7 @@ slack_pipeline_success = SlackWebhookOperator(
     task_id="send_slack_pipeline_success",
     slack_webhook_conn_id="slack_webhook",
     message=":large_green_circle: *SavVio Data Pipeline* — Pipeline completed *successfully*. All data loaded into DB.",
-    channel="#group-34",
+    channel=SLACK_CHANNEL,
     dag=dag,
 )
 
@@ -236,10 +150,6 @@ ingest_reviews = PythonOperator(
     dag=dag,
 )
 
-# Ingestion error alerts (fire if ANY ingestion task fails)
-[ingest_financial, ingest_products, ingest_reviews] >> email_error_at_ingestion
-[ingest_financial, ingest_products, ingest_reviews] >> slack_error_at_ingestion
-
 #----------------------------------------------------
 # 2. Raw Data Validation  (after ALL ingestion succeeds)
 #----------------------------------------------------
@@ -259,10 +169,6 @@ validate_raw_anomaly = PythonOperator(
 # Ingestion → validation (only if ALL ingestion tasks pass)
 [ingest_financial, ingest_products, ingest_reviews] >> validate_raw_data
 [ingest_financial, ingest_products, ingest_reviews] >> validate_raw_anomaly  # INFO-only, non-gating
-
-# Raw validation error alerts
-validate_raw_data >> email_error_at_raw_validation
-validate_raw_data >> slack_error_at_raw_validation
 
 #----------------------------------------------------
 # 3. Data Preprocessing  (after raw validation passes)
@@ -289,10 +195,6 @@ preprocess_reviews = PythonOperator(
 # Raw validation gates preprocessing
 validate_raw_data >> [preprocess_financial, preprocess_products, preprocess_reviews]
 
-# Preprocessing error alerts
-[preprocess_financial, preprocess_products, preprocess_reviews] >> email_error_at_preprocessing
-[preprocess_financial, preprocess_products, preprocess_reviews] >> slack_error_at_preprocessing
-
 #----------------------------------------------------
 # 4. Processed Data Validation  (after ALL preprocessing succeeds)
 #----------------------------------------------------
@@ -304,10 +206,6 @@ validate_processed_data = PythonOperator(
 )
 
 [preprocess_financial, preprocess_products, preprocess_reviews] >> validate_processed_data
-
-# Processed validation error alerts
-validate_processed_data >> email_error_at_processed_validation
-validate_processed_data >> slack_error_at_processed_validation
 
 #----------------------------------------------------
 # 5. Feature Engineering  (after processed validation passes)
@@ -328,10 +226,6 @@ feature_reviews = PythonOperator(
 # Processed validation gates feature engineering
 validate_processed_data >> [feature_financial, feature_reviews]
 
-# Feature engineering error alerts
-[feature_financial, feature_reviews] >> email_error_at_feature_engineering
-[feature_financial, feature_reviews] >> slack_error_at_feature_engineering
-
 #----------------------------------------------------
 # 6. Featured Data Validation  (after ALL feature engineering succeeds)
 #----------------------------------------------------
@@ -343,10 +237,6 @@ validate_featured_data = PythonOperator(
 )
 
 [feature_financial, feature_reviews] >> validate_featured_data
-
-# Featured validation error alerts
-validate_featured_data >> email_error_at_featured_validation
-validate_featured_data >> slack_error_at_featured_validation
 
 #----------------------------------------------------
 # 7. Loading Data into PostgreSQL  (after featured validation passes)
@@ -380,10 +270,6 @@ generate_load_embeddings = PythonOperator(
 validate_featured_data >> [load_financial, load_product, load_review]
 
 [load_financial, load_product, load_review] >> generate_load_embeddings
-
-# DB loading error alerts
-[load_financial, load_product, load_review, generate_load_embeddings] >> email_error_at_DB_loading
-[load_financial, load_product, load_review, generate_load_embeddings] >> slack_error_at_DB_loading
 
 #----------------------------------------------------
 # 8. Pipeline Success  (fires after ALL DB tasks complete)
