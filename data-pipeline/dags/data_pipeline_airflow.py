@@ -15,86 +15,84 @@ from airflow.providers.standard.operators.python import PythonOperator, BranchPy
 from airflow.providers.smtp.operators.smtp import EmailOperator
 from airflow.providers.slack.operators.slack_webhook import SlackWebhookOperator
 from airflow.providers.standard.operators.trigger_dagrun import TriggerDagRunOperator
+from airflow.utils.trigger_rule import TriggerRule
+# from airflow.task.trigger_rule import TriggerRule new one, need to verify
 
 
-# ==================== FAILURE CALLBACK ====================
-# Fires ONLY when a task actually fails — NOT on upstream_failed (skipped).
-# This prevents the cascading email/Slack flood.
+# ==================== BRANCHING HELPER ====================
+# Generic factory: returns a callable that checks upstream task states.
+# If ALL upstream tasks succeeded → route to success_ids.
+# If ANY upstream task failed  → route to failure_ids.
+# If ANY upstream task was skipped/upstream_failed (cascade from earlier branch)
+#   → return [] to skip all downstream (no duplicate alerts).
+#
+# The BranchPythonOperator uses trigger_rule=ALL_DONE so it always runs,
+# even when some upstream tasks fail.  The branching logic inside decides
+# whether to continue, alert, or silently stop.
 
+def make_branch_check(upstream_ids, success_ids, failure_ids):
+    """
+    Create a branch callable for BranchPythonOperator.
+
+    Args:
+        upstream_ids:  task_id(s) to inspect
+        success_ids:   task_id(s) to run when all upstreams succeeded
+        failure_ids:   task_id(s) to run when any upstream failed
+    """
+    def _check(**context):
+        import logging
+        from airflow.sdk.execution_time.task_runner import RuntimeTaskInstance
+
+        logger = logging.getLogger(__name__)
+        dag_run = context["dag_run"]
+
+        try:
+            # Airflow 3.x SDK — returns nested dict: {run_id: {task_id: TaskInstanceState}}
+            all_states = RuntimeTaskInstance.get_task_states(
+                dag_id=dag_run.dag_id,
+                run_ids=[dag_run.run_id],
+                task_ids=upstream_ids,
+            )
+            # Extract the inner dict for our specific run
+            states = all_states.get(dag_run.run_id, {})
+        except Exception as e:
+            logger.error("get_task_states failed: %s — routing to failure", e, exc_info=True)
+            return failure_ids
+
+        logger.info("Branch check — upstream states: %s", states)
+
+        for tid in upstream_ids:
+            state = str(states.get(tid, ""))
+
+            # Upstream was skipped by a previous branch — stop cascade silently
+            if state in ("skipped", "upstream_failed", ""):
+                logger.info("Task %s is %s — skipping cascade (no alert)", tid, state)
+                return []  # skip ALL downstream tasks
+
+            # Upstream actually ran and failed — route to error alerts
+            if state != "success":
+                logger.info("Task %s is %s — routing to failure alerts", tid, state)
+                return failure_ids
+
+        logger.info("All upstream tasks succeeded — continuing pipeline")
+        return success_ids
+
+    return _check
+
+
+# ---------- Constants ----------
 ALERT_EMAIL = "murtaza.sn786@gmail.com"
 SLACK_CHANNEL = "#group-34"
-
-# Map task_id prefixes to human-readable stage names
-STAGE_LABELS = {
-    "ingest":      "Ingestion",
-    "validate_raw": "Raw Validation",
-    "preprocess":  "Preprocessing",
-    "validate_processed": "Processed Validation",
-    "feature":     "Feature Engineering",
-    "validate_featured": "Featured Validation",
-    "load":        "DB Loading",
-    "generate":    "DB Loading (Embeddings)",
-}
-
-def _get_stage(task_id: str) -> str:
-    """Derive a human-readable stage name from the task_id."""
-    for prefix, label in STAGE_LABELS.items():
-        if task_id.startswith(prefix):
-            return label
-    return task_id
-
-
-def on_failure_alert(context):
-    """
-    on_failure_callback — sends Email + Slack alert when a task ACTUALLY fails.
-    Does NOT fire when a task is merely skipped (upstream_failed).
-    """
-    ti = context["task_instance"]
-    task_id = ti.task_id
-    dag_id = ti.dag_id
-    exec_date = context["logical_date"]
-    stage = _get_stage(task_id)
-    exception = context.get("exception", "Unknown error")
-
-    # ----- Email -----
-    email_task = EmailOperator(
-        task_id=f"_alert_email_{task_id}",
-        to=ALERT_EMAIL,
-        subject=f"SavVio Data Pipeline — Error at {stage}",
-        html_content=(
-            f"<h3>Pipeline Error: {stage}</h3>"
-            f"<p><b>Task:</b> {task_id}</p>"
-            f"<p><b>DAG:</b> {dag_id}</p>"
-            f"<p><b>Execution Date:</b> {exec_date}</p>"
-            f"<p><b>Error:</b> {exception}</p>"
-        ),
-    )
-    email_task.execute(context)
-
-    # ----- Slack -----
-    slack_task = SlackWebhookOperator(
-        task_id=f"_alert_slack_{task_id}",
-        slack_webhook_conn_id="slack_webhook",
-        message=(
-            f":red_circle: *SavVio Data Pipeline* — Error at *{stage}*\n"
-            f">Task: `{task_id}`\n"
-            f">Error: {exception}"
-        ),
-        channel=SLACK_CHANNEL,
-    )
-    slack_task.execute(context)
-
 
 # ---------- Default args ----------
 default_args = {
     'owner': 'Murtaza Nipplewala',
     'start_date': datetime(2026, 2, 17),
-    'retries': 2,
+    'retries': 0,
     'retry_delay': timedelta(minutes=0.3),
     'email': 'murtaza.sn786@gmail.com',
-    'email_on_failure': False,       # Handled by on_failure_callback instead
+    'email_on_failure': True,
     'email_on_retry': False,
-    'on_failure_callback': on_failure_alert,   # <-- ALL tasks get this
 }
 
 # ---------- DAG ----------
@@ -109,8 +107,150 @@ dag = DAG(
     max_active_runs=1,
 )
 
+
+# ==================== ERROR ALERT OPERATORS ====================
+# Each pair (email + slack) is a terminal leaf — pipeline stops here.
+
+# --- Ingestion Errors ---
+email_error_at_ingestion = EmailOperator(
+    task_id="send_email_at_ingestion_error",
+    to=ALERT_EMAIL,
+    subject="SavVio Data Pipeline Airflow - Error at Ingestion",
+    html_content="<p>Something went wrong at Ingestion stage.</p>",
+    dag=dag,
+)
+
+slack_error_at_ingestion = SlackWebhookOperator(
+    task_id="send_slack_at_ingestion_error",
+    slack_webhook_conn_id="slack_webhook",
+    message=":red_circle: *SavVio Data Pipeline* — Error at *Ingestion* stage.",
+    channel=SLACK_CHANNEL,
+    dag=dag,
+)
+
+# --- Raw Validation Errors ---
+email_error_at_raw_validation = EmailOperator(
+    task_id="send_email_at_raw_validation_error",
+    to=ALERT_EMAIL,
+    subject="SavVio Data Pipeline Airflow - Error at Raw Validation",
+    html_content="<p>Something went wrong at Raw Data Validation stage.</p>",
+    dag=dag,
+)
+
+slack_error_at_raw_validation = SlackWebhookOperator(
+    task_id="send_slack_at_raw_validation_error",
+    slack_webhook_conn_id="slack_webhook",
+    message=":red_circle: *SavVio Data Pipeline* — Error at *Raw Validation* stage.",
+    channel=SLACK_CHANNEL,
+    dag=dag,
+)
+
+# --- Preprocessing Errors ---
+email_error_at_preprocessing = EmailOperator(
+    task_id="send_email_at_preprocessing_error",
+    to=ALERT_EMAIL,
+    subject="SavVio Data Pipeline Airflow - Error at Preprocessing",
+    html_content="<p>Something went wrong at Preprocessing stage.</p>",
+    dag=dag,
+)
+
+slack_error_at_preprocessing = SlackWebhookOperator(
+    task_id="send_slack_at_preprocessing_error",
+    slack_webhook_conn_id="slack_webhook",
+    message=":red_circle: *SavVio Data Pipeline* — Error at *Preprocessing* stage.",
+    channel=SLACK_CHANNEL,
+    dag=dag,
+)
+
+# --- Processed Validation Errors ---
+email_error_at_processed_validation = EmailOperator(
+    task_id="send_email_at_processed_validation_error",
+    to=ALERT_EMAIL,
+    subject="SavVio Data Pipeline Airflow - Error at Processed Validation",
+    html_content="<p>Something went wrong at Processed Data Validation stage.</p>",
+    dag=dag,
+)
+
+slack_error_at_processed_validation = SlackWebhookOperator(
+    task_id="send_slack_at_processed_validation_error",
+    slack_webhook_conn_id="slack_webhook",
+    message=":red_circle: *SavVio Data Pipeline* — Error at *Processed Validation* stage.",
+    channel=SLACK_CHANNEL,
+    dag=dag,
+)
+
+# --- Feature Engineering Errors ---
+email_error_at_feature_engineering = EmailOperator(
+    task_id="send_email_at_feature_engineering_error",
+    to=ALERT_EMAIL,
+    subject="SavVio Data Pipeline Airflow - Error at Feature Engineering",
+    html_content="<p>Something went wrong at Feature Engineering stage.</p>",
+    dag=dag,
+)
+
+slack_error_at_feature_engineering = SlackWebhookOperator(
+    task_id="send_slack_at_feature_engineering_error",
+    slack_webhook_conn_id="slack_webhook",
+    message=":red_circle: *SavVio Data Pipeline* — Error at *Feature Engineering* stage.",
+    channel=SLACK_CHANNEL,
+    dag=dag,
+)
+
+# --- Featured Validation Errors ---
+email_error_at_featured_validation = EmailOperator(
+    task_id="send_email_at_featured_validation_error",
+    to=ALERT_EMAIL,
+    subject="SavVio Data Pipeline Airflow - Error at Featured Validation",
+    html_content="<p>Something went wrong at Featured Data Validation stage.</p>",
+    dag=dag,
+)
+
+slack_error_at_featured_validation = SlackWebhookOperator(
+    task_id="send_slack_at_featured_validation_error",
+    slack_webhook_conn_id="slack_webhook",
+    message=":red_circle: *SavVio Data Pipeline* — Error at *Featured Validation* stage.",
+    channel=SLACK_CHANNEL,
+    dag=dag,
+)
+
+# --- DB Loading Errors ---
+email_error_at_DB_loading = EmailOperator(
+    task_id="send_email_at_DB_loading_error",
+    to=ALERT_EMAIL,
+    subject="SavVio Data Pipeline Airflow - Error at DB Loading",
+    html_content="<p>Something went wrong at DB Loading stage.</p>",
+    dag=dag,
+)
+
+slack_error_at_DB_loading = SlackWebhookOperator(
+    task_id="send_slack_at_DB_loading_error",
+    slack_webhook_conn_id="slack_webhook",
+    message=":red_circle: *SavVio Data Pipeline* — Error at *DB Loading* stage.",
+    channel=SLACK_CHANNEL,
+    dag=dag,
+)
+
+# --- Bias Analysis Errors (placeholder) ---
+# email_error_at_bias_analysis = EmailOperator(
+#     task_id="send_email_at_bias_analysis_error",
+#     to=ALERT_EMAIL,
+#     subject="SavVio Data Pipeline Airflow - Error at Bias Analysis",
+#     html_content="<p>Something went wrong at Bias Analysis stage.</p>",
+#     trigger_rule=TriggerRule.ONE_FAILED,
+#     dag=dag,
+# )
+
+# slack_error_at_bias_analysis = SlackWebhookOperator(
+#     task_id="send_slack_at_bias_analysis_error",
+#     slack_webhook_conn_id="slack_webhook",
+#     message=":red_circle: *SavVio Data Pipeline* — Error at *Bias Analysis* stage.",
+#     channel=SLACK_CHANNEL,
+#     trigger_rule=TriggerRule.ONE_FAILED,
+#     dag=dag,
+# )
+
+
 # ==================== SUCCESS ALERT OPERATORS ====================
-# These use default ALL_SUCCESS, so they ONLY fire when the entire pipeline completes.
 
 email_pipeline_success = EmailOperator(
     task_id="send_email_pipeline_success",
@@ -128,9 +268,10 @@ slack_pipeline_success = SlackWebhookOperator(
     dag=dag,
 )
 
-#----------------------------------------------------
-# 1. Data Ingestion  (runs in PARALLEL)
-#----------------------------------------------------
+
+# ═══════════════════════════════════════════════════════════════════
+# 1. DATA INGESTION  (runs in PARALLEL)
+# ═══════════════════════════════════════════════════════════════════
 
 ingest_financial = PythonOperator(
     task_id='ingest_financial_data',
@@ -150,9 +291,25 @@ ingest_reviews = PythonOperator(
     dag=dag,
 )
 
-#----------------------------------------------------
-# 2. Raw Data Validation  (after ALL ingestion succeeds)
-#----------------------------------------------------
+# --- BRANCH: all ingestion succeeded? ---
+check_ingestion = BranchPythonOperator(
+    task_id='check_ingestion',
+    python_callable=make_branch_check(
+        upstream_ids=['ingest_financial_data', 'ingest_product_data', 'ingest_review_data'],
+        success_ids=['validate_raw_data', 'validate_raw_anomalies'],
+        failure_ids=['send_email_at_ingestion_error', 'send_slack_at_ingestion_error'],
+    ),
+    trigger_rule=TriggerRule.ALL_DONE,   # branch must always run so it can inspect results and route to errors
+    dag=dag,
+)
+
+[ingest_financial, ingest_products, ingest_reviews] >> check_ingestion
+check_ingestion >> [email_error_at_ingestion, slack_error_at_ingestion]
+
+
+# ═══════════════════════════════════════════════════════════════════
+# 2. RAW DATA VALIDATION  (branched from ingestion success path)
+# ═══════════════════════════════════════════════════════════════════
 
 validate_raw_data = PythonOperator(
     task_id='validate_raw_data',
@@ -166,13 +323,27 @@ validate_raw_anomaly = PythonOperator(
     dag=dag,
 )
 
-# Ingestion → validation (only if ALL ingestion tasks pass)
-[ingest_financial, ingest_products, ingest_reviews] >> validate_raw_data
-[ingest_financial, ingest_products, ingest_reviews] >> validate_raw_anomaly  # INFO-only, non-gating
+check_ingestion >> [validate_raw_data, validate_raw_anomaly]
 
-#----------------------------------------------------
-# 3. Data Preprocessing  (after raw validation passes)
-#----------------------------------------------------
+# --- BRANCH: raw validation succeeded? ---
+check_raw_validation = BranchPythonOperator(
+    task_id='check_raw_validation',
+    python_callable=make_branch_check(
+        upstream_ids=['validate_raw_data'],
+        success_ids=['preprocess_financial_data', 'preprocess_product_data', 'preprocess_review_data'],
+        failure_ids=['send_email_at_raw_validation_error', 'send_slack_at_raw_validation_error'],
+    ),
+    trigger_rule=TriggerRule.ALL_DONE,
+    dag=dag,
+)
+
+validate_raw_data >> check_raw_validation
+check_raw_validation >> [email_error_at_raw_validation, slack_error_at_raw_validation]
+
+
+# ═══════════════════════════════════════════════════════════════════
+# 3. DATA PREPROCESSING  (branched from raw validation success path)
+# ═══════════════════════════════════════════════════════════════════
 
 preprocess_financial = PythonOperator(
     task_id='preprocess_financial_data',
@@ -192,12 +363,27 @@ preprocess_reviews = PythonOperator(
     dag=dag,
 )
 
-# Raw validation gates preprocessing
-validate_raw_data >> [preprocess_financial, preprocess_products, preprocess_reviews]
+check_raw_validation >> [preprocess_financial, preprocess_products, preprocess_reviews]
 
-#----------------------------------------------------
-# 4. Processed Data Validation  (after ALL preprocessing succeeds)
-#----------------------------------------------------
+# --- BRANCH: all preprocessing succeeded? ---
+check_preprocessing = BranchPythonOperator(
+    task_id='check_preprocessing',
+    python_callable=make_branch_check(
+        upstream_ids=['preprocess_financial_data', 'preprocess_product_data', 'preprocess_review_data'],
+        success_ids=['validate_processed_data'],
+        failure_ids=['send_email_at_preprocessing_error', 'send_slack_at_preprocessing_error'],
+    ),
+    trigger_rule=TriggerRule.ALL_DONE,
+    dag=dag,
+)
+
+[preprocess_financial, preprocess_products, preprocess_reviews] >> check_preprocessing
+check_preprocessing >> [email_error_at_preprocessing, slack_error_at_preprocessing]
+
+
+# ═══════════════════════════════════════════════════════════════════
+# 4. PROCESSED DATA VALIDATION  (branched from preprocessing success)
+# ═══════════════════════════════════════════════════════════════════
 
 validate_processed_data = PythonOperator(
     task_id='validate_processed_data',
@@ -205,11 +391,27 @@ validate_processed_data = PythonOperator(
     dag=dag,
 )
 
-[preprocess_financial, preprocess_products, preprocess_reviews] >> validate_processed_data
+check_preprocessing >> validate_processed_data
 
-#----------------------------------------------------
-# 5. Feature Engineering  (after processed validation passes)
-#----------------------------------------------------
+# --- BRANCH: processed validation succeeded? ---
+check_processed_validation = BranchPythonOperator(
+    task_id='check_processed_validation',
+    python_callable=make_branch_check(
+        upstream_ids=['validate_processed_data'],
+        success_ids=['feature_financial_data', 'feature_review_data'],
+        failure_ids=['send_email_at_processed_validation_error', 'send_slack_at_processed_validation_error'],
+    ),
+    trigger_rule=TriggerRule.ALL_DONE,
+    dag=dag,
+)
+
+validate_processed_data >> check_processed_validation
+check_processed_validation >> [email_error_at_processed_validation, slack_error_at_processed_validation]
+
+
+# ═══════════════════════════════════════════════════════════════════
+# 5. FEATURE ENGINEERING  (branched from processed validation success)
+# ═══════════════════════════════════════════════════════════════════
 
 feature_financial = PythonOperator(
     task_id='feature_financial_data',
@@ -223,12 +425,27 @@ feature_reviews = PythonOperator(
     dag=dag,
 )
 
-# Processed validation gates feature engineering
-validate_processed_data >> [feature_financial, feature_reviews]
+check_processed_validation >> [feature_financial, feature_reviews]
 
-#----------------------------------------------------
-# 6. Featured Data Validation  (after ALL feature engineering succeeds)
-#----------------------------------------------------
+# --- BRANCH: all feature engineering succeeded? ---
+check_feature_engineering = BranchPythonOperator(
+    task_id='check_feature_engineering',
+    python_callable=make_branch_check(
+        upstream_ids=['feature_financial_data', 'feature_review_data'],
+        success_ids=['validate_featured_data'],
+        failure_ids=['send_email_at_feature_engineering_error', 'send_slack_at_feature_engineering_error'],
+    ),
+    trigger_rule=TriggerRule.ALL_DONE,
+    dag=dag,
+)
+
+[feature_financial, feature_reviews] >> check_feature_engineering
+check_feature_engineering >> [email_error_at_feature_engineering, slack_error_at_feature_engineering]
+
+
+# ═══════════════════════════════════════════════════════════════════
+# 6. FEATURED DATA VALIDATION  (branched from feature eng success)
+# ═══════════════════════════════════════════════════════════════════
 
 validate_featured_data = PythonOperator(
     task_id='validate_featured_data',
@@ -236,11 +453,27 @@ validate_featured_data = PythonOperator(
     dag=dag,
 )
 
-[feature_financial, feature_reviews] >> validate_featured_data
+check_feature_engineering >> validate_featured_data
 
-#----------------------------------------------------
-# 7. Loading Data into PostgreSQL  (after featured validation passes)
-#----------------------------------------------------
+# --- BRANCH: featured validation succeeded? ---
+check_featured_validation = BranchPythonOperator(
+    task_id='check_featured_validation',
+    python_callable=make_branch_check(
+        upstream_ids=['validate_featured_data'],
+        success_ids=['load_financial_profiles', 'load_products', 'load_reviews'],
+        failure_ids=['send_email_at_featured_validation_error', 'send_slack_at_featured_validation_error'],
+    ),
+    trigger_rule=TriggerRule.ALL_DONE,
+    dag=dag,
+)
+
+validate_featured_data >> check_featured_validation
+check_featured_validation >> [email_error_at_featured_validation, slack_error_at_featured_validation]
+
+
+# ═══════════════════════════════════════════════════════════════════
+# 7. LOADING DATA INTO POSTGRESQL  (branched from featured validation)
+# ═══════════════════════════════════════════════════════════════════
 
 load_financial = PythonOperator(
     task_id='load_financial_profiles',
@@ -266,21 +499,29 @@ generate_load_embeddings = PythonOperator(
     dag=dag,
 )
 
-# Featured validation gates DB loading
-validate_featured_data >> [load_financial, load_product, load_review]
-
+check_featured_validation >> [load_financial, load_product, load_review]
 [load_financial, load_product, load_review] >> generate_load_embeddings
 
-#----------------------------------------------------
-# 8. Pipeline Success  (fires after ALL DB tasks complete)
-#----------------------------------------------------
+# --- BRANCH: all DB loading succeeded? ---
+check_db_loading = BranchPythonOperator(
+    task_id='check_db_loading',
+    python_callable=make_branch_check(
+        upstream_ids=['load_financial_profiles', 'load_products', 'load_reviews', 'generate_load_embeddings'],
+        success_ids=['send_email_pipeline_success', 'send_slack_pipeline_success'],
+        failure_ids=['send_email_at_DB_loading_error', 'send_slack_at_DB_loading_error'],
+    ),
+    trigger_rule=TriggerRule.ALL_DONE,
+    dag=dag,
+)
 
-generate_load_embeddings >> email_pipeline_success
-generate_load_embeddings >> slack_pipeline_success
+generate_load_embeddings >> check_db_loading
+check_db_loading >> [email_error_at_DB_loading, slack_error_at_DB_loading]
+check_db_loading >> [email_pipeline_success, slack_pipeline_success]
 
-#----------------------------------------------------
-# Airflow DAG for Bias Analysis
-#----------------------------------------------------
+
+# ═══════════════════════════════════════════════════════════════════
+# Airflow DAG for Bias Analysis (commented out)
+# ═══════════════════════════════════════════════════════════════════
 
 # bias_financial = PythonOperator(
 #     task_id='bias_analysis_financial',
