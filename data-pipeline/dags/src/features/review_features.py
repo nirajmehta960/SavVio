@@ -71,7 +71,12 @@ def run_review_features(reviews_path: str, output_path: str) -> None:
 
     try:
         logger.info(f"Loading reviews from {reviews_path}...")
-        reviews_df = pd.read_json(reviews_path, lines=True)
+        # reviews_df = pd.read_json(reviews_path, lines=True)
+        file_size_mb = os.path.getsize(reviews_path) / (1024 * 1024)
+        if file_size_mb > 100:
+            reviews_df = pd.concat(pd.read_json(reviews_path, lines=True, chunksize=50_000), ignore_index=True)
+        else:
+            reviews_df = pd.read_json(reviews_path, lines=True)
         logger.info(f"Loaded {len(reviews_df)} reviews.")
 
         # Compute product-level rating variance.

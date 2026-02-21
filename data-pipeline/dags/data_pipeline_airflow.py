@@ -534,6 +534,18 @@ check_db_loading >> email_error_at_DB_loading
 # check_db_loading >> [email_pipeline_success, slack_pipeline_success]
 check_db_loading >> email_pipeline_success
 
+# ═══════════════════════════════════════════════════════════════════
+# SENTINEL — marks the DAG run as failed if any stage was skipped/failed
+# ═══════════════════════════════════════════════════════════════════
+pipeline_sentinel = BashOperator(
+    task_id='pipeline_sentinel',
+    bash_command='echo "Pipeline completed successfully"',
+    trigger_rule=TriggerRule.ALL_SUCCESS,
+    dag=dag,
+)
+
+email_pipeline_success >> pipeline_sentinel
+
 
 # ═══════════════════════════════════════════════════════════════════
 # Airflow DAG for Bias Analysis (commented out)

@@ -10,6 +10,7 @@ Products must be loaded before reviews (FK dependency).
 """
 
 import json
+import os
 import logging
 import pandas as pd
 from sqlalchemy import text
@@ -89,7 +90,13 @@ def _read_csv(path: str) -> pd.DataFrame:
 
 def _read_jsonl(path: str) -> pd.DataFrame:
     """Read a JSONL file (one JSON object per line)."""
-    df = pd.read_json(path, lines=True)
+    # df = pd.read_json(path, lines=True)
+    file_size_mb = os.path.getsize(path) / (1024 * 1024)
+    if file_size_mb > 100:
+        chunks = pd.read_json(path, lines=True, chunksize=50_000)
+        df = pd.concat(chunks, ignore_index=True)
+    else:
+        df = pd.read_json(path, lines=True)
     logger.info("Read %d rows from JSONL: %s", len(df), path)
     return df
 
