@@ -11,129 +11,181 @@ This guide provides step-by-step instructions for setting up the environment, ru
 ### Prerequisites
 - Python 3.10+
 - `pip` or `uv` (recommended for speed)
-- Google Cloud SDK (if interacting with GCS directly)
+- Google Cloud SDK (optional; for direct GCS access)
+
+### GCP credentials and config folder
+
+1. **Create the config folder** in the data-pipeline directory (if it does not exist):
+   ```bash
+   mkdir -p data-pipeline/config
+   ```
+
+2. **Store the GCP service account key** in that folder:
+   - Obtain the service account JSON key from your GCP project (IAM & Admin → Service Accounts → Keys).
+   - Save it as `data-pipeline/config/savvio-gcp-key.json`.
+   - **Do not commit this file to Git.** The folder `data-pipeline/config/` is already in the repo `.gitignore`.
+
+3. **Reference this path** in your `.env` (see below). Use an absolute path in `.env` so ingestion and DVC can find it from any working directory (e.g. `/path/to/SavVio/data-pipeline/config/savvio-gcp-key.json`).
 
 ### Installation
-1. Navigate to the pipeline directory:
-   ```bash
-   cd data-pipeline
-   ```
 
-2. Create and activate a virtual environment:
+1. From the **repository root** (e.g. `SavVio/`), create and activate a virtual environment (you can use repo root or data-pipeline):
    ```bash
    python3 -m venv .venv
-   source .venv/bin/activate
+   source .venv/bin/activate   # On Windows: .venv\Scripts\activate
    ```
 
-3. Install dependencies:
+2. Install dependencies (from repo root or from `data-pipeline/dags` if there is a local `requirements.txt`):
    ```bash
    pip install -r requirements.txt
    ```
-   *(If `requirements.txt` is missing, ensure you have pandas, google-cloud-storage, dvc, dvc-gcs, python-dotenv installed)*
+   *(Ensure pandas, google-cloud-storage, dvc[gs], python-dotenv are installed.)*
 
-4. Configure Environment Variables:
-   - Create a `.env` file in the project root folder
-   - Add the following configurations:
+3. **Configure environment variables**
+   - Create a `.env` file at the **repository root** (e.g. `SavVio/.env`).
+   - Add the following (use the path to the key you saved in the config folder):
      ```env
      # Google Cloud Configuration
      GCP_PROJECT_ID=your-project-id
      GCS_BUCKET_NAME=savvio-data-bucket
-     GCP_CREDENTIALS_PATH=/path/to/your/service-account-key.json
+     GCP_CREDENTIALS_PATH=/absolute/path/to/SavVio/data-pipeline/config/savvio-gcp-key.json
      
      # Pipeline Config
      DATA_DIR=data
      LOG_LEVEL=INFO
      ```
 
+### DVC remote credential path
+
+DVC needs the same GCP key to push/pull from GCS. Set the credential path once (from repo root):
+
+```bash
+dvc remote modify gcs credentialpath /absolute/path/to/SavVio/data-pipeline/config/savvio-gcp-key.json
+```
+
+Use the same path as `GCP_CREDENTIALS_PATH` in your `.env`. After this, `dvc push` and `dvc pull` will use the key without extra env vars. If you get a **401** when running `dvc pull`, run the command above with your actual key path.
+
 ---
 
 ## 2. Data Ingestion
 
-The ingestion script downloads raw data from Google Cloud Storage (or API in prod) to `data/raw/`.
+The ingestion script downloads raw data from Google Cloud Storage (or API in prod) to `data-pipeline/dags/data/raw/`.
 
-**Run Ingestion:**
+**Run ingestion** (from repository root or from `data-pipeline/dags`):
 ```bash
-# Ensure you are in data-pipeline directory
-python3 ingestion-scripts/run_ingestion.py
+cd data-pipeline/dags/src/ingestion
+python3 run_ingestion.py
+```
+Or from repo root:
+```bash
+cd data-pipeline/dags && python3 src/ingestion/run_ingestion.py
 ```
 
 **What this does:**
-- Checks `data/raw/` for existing files.
-- Downloads `financial_data.csv`, `product_data.jsonl`, and `review_data.jsonl`.
-- Verifies file integrity.
+- Creates `data/raw/` under `data-pipeline/dags/data/` if needed.
+- Downloads `financial_data.csv`, `product_data.jsonl`, and `review_data.jsonl` from GCS.
+- Overwrites existing files if re-run.
 
 ---
 
 ## 3. Data Preprocessing
 
-We have a unified orchestrator script that runs all preprocessing tasks in the correct order.
+A single orchestrator runs all preprocessing steps in order. Run it from the **dags** directory so paths resolve correctly.
 
-**Run All Preprocessing:**
+**Run all preprocessing:**
 ```bash
-python3 scripts/run_preprocessing.py
+cd data-pipeline/dags
+python3 src/preprocess/run_preprocessing.py
 ```
 
-**Individual Steps (if needed for debugging):**
-- **Financial Data:** `python3 -m scripts.preprocess.financial`
-- **Product Data:** `python3 -m scripts.preprocess.product`
-- **Review Data:** `python3 -m scripts.preprocess.review`
+**Individual steps (for debugging):**
+- From `data-pipeline/dags`: run the modules under `src/preprocess/` (financial, product, review).
 
 **Outputs:**
-- Processed files are saved to `data/processed/`.
-- Logs are printed to the console (and saved to `logs/` if configured).
+- Processed files are written to `data-pipeline/dags/data/processed/`.
+- Logs go to the console (and `logs/` if configured).
 
 ---
 
-## 4. Data Versioning (DVC)
+## 4. Data Validation
 
-We use DVC (Data Version Control) to version our raw and processed datasets.
+The validation script runs data quality and anomaly checks against the raw, processed, and featured datasets. It ensures the data meets schemas and quality standards before it flows further into the pipeline or database.
 
-### Basic Workflow
+**Run all validation stages:**
+```bash
+cd data-pipeline/dags
+python3 src/validation/run_validation.py all
+```
 
-1. **Track New/Modified Data:**
-   After running ingestion or preprocessing, if data has changed:
+**Run a specific stage (for debugging):**
+- Valid stages: `raw`, `processed`, `features`, `raw_anomalies`, `anomalies`.
+```bash
+cd data-pipeline/dags
+python3 src/validation/run_validation.py processed
+```
+
+**Outputs:**
+- A summary of PASSED/WARNING/CRITICAL checks per stage is logged to the console.
+- The pipeline will halt if any CRITICAL failures are detected.
+
+---
+
+## 5. Data Versioning (DVC)
+
+DVC tracks raw, processed, and features under `data-pipeline/dags/data/`. The remote is GCS: `gs://savvio-data-bucket/dvcstore`. Ensure you have set the DVC credential path (see **1. Environment Setup → DVC remote credential path**).
+
+### Basic workflow
+
+All DVC commands below are run from **`data-pipeline/dags/data`** (where the `.dvc` files live).
+
+1. **Track new or updated data**
+   After ingestion or preprocessing:
    ```bash
-   # Add processed data folder to DVC
-   dvc add data/processed
-   
-   # Add raw data (only if you ingested new raw data)
-   dvc add data/raw
+   cd data-pipeline/dags/data
+   dvc add raw
+   dvc add processed
+   dvc add features
    ```
 
-2. **Commit DVC Changes to Git:**
-   DVC creates `.dvc` files that point to the actual data. These must be committed to Git.
+2. **Commit DVC pointer files in Git**
    ```bash
-   git add data/processed.dvc data/raw.dvc
-   git commit -m "Update processed data artifacts"
+   git add raw.dvc processed.dvc features.dvc
+   git commit -m "Update data artifacts"
    ```
 
-3. **Push Data to Remote Storage (GCS):**
-   This uploads the actual large data files to the shared GCS bucket.
+3. **Push data to GCS**
    ```bash
    dvc push
    ```
+   (Uses the credential path set in `.dvc/config`.)
 
-4. **Pull Data (for other team members):**
-   To get the latest data versions committed by teammates:
+4. **Pull data (for other team members)**
+   After cloning or pulling Git:
    ```bash
-   git pull origin main
+   cd data-pipeline/dags/data
    dvc pull
    ```
+   If you get **401**, set the credential path:  
+   `dvc remote modify gcs credentialpath /path/to/data-pipeline/config/savvio-gcp-key.json`  
+   If you get **missing cache files**, the data was never pushed; run preprocessing then `dvc add processed` and `dvc push` (or use `./scripts/backfill-processed-dvc.sh` from repo root).
 
 ### Troubleshooting DVC
-- **Lock file error?**
-  Run `rm -f .dvc/tmp/lock` if DVC complains about a lock file after a crash.
-- **Cache error?**
-  Run `dvc doctor` to diagnose issues.
+- **Lock file error:** `rm -f .dvc/tmp/lock` (from repo root).
+- **Cache / 401:** Ensure `credentialpath` in `.dvc/config` points to your `savvio-gcp-key.json` (see **1. Environment Setup**).
+- **Missing cache:** Run `dvc doctor`; ensure remote URL is `gs://savvio-data-bucket/dvcstore`.
 
 ---
 
-## 5. Pipeline Summary
+## 6. Pipeline Summary
 
-| Step | Script / Command | output |
-|------|------------------|--------|
-| **1. Ingest** | `python3 ingestion-scripts/run_ingestion.py` | `data/raw/*` |
-| **2. Preprocess** | `python3 scripts/run_preprocessing.py` | `data/processed/*` |
-| **3. Version** | `dvc add data/processed && dvc push` | `gs://savvio-data-bucket/dvc-store` |
+| Step | Command (where to run) | Output |
+|------|-------------------------|--------|
+| **1. Ingest** | `cd data-pipeline/dags && python3 src/ingestion/run_ingestion.py` | `data-pipeline/dags/data/raw/*` |
+| **2. Preprocess** | `cd data-pipeline/dags && python3 src/preprocess/run_preprocessing.py` | `data-pipeline/dags/data/processed/*` |
+| **3. Features** | `cd data-pipeline/dags && python3 src/features/run_features.py` | `data-pipeline/dags/data/features/*` |
+| **4. Validate** | `cd data-pipeline/dags && python3 src/validation/run_validation.py all` | _Validation Report_ |
+| **5. Version** | `cd data-pipeline/dags/data && dvc add raw processed features && dvc push` | `gs://savvio-data-bucket/dvcstore` |
+
+**Team checklist:** Create `data-pipeline/config/`, add `savvio-gcp-key.json` (do not commit), set `GCP_CREDENTIALS_PATH` in `.env`, and run `dvc remote modify gcs credentialpath <path-to-key>` once.
 
 ---
