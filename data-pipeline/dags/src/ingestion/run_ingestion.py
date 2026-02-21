@@ -6,6 +6,7 @@ This is the main entry point for the data ingestion step in the Airflow DAG.
 
 import logging
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Tuple
 import pandas as pd
@@ -43,7 +44,7 @@ logger = logging.getLogger(__name__)
 
 def load_from_gcs() -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """
-    Load all datasets from Google Cloud Storage.
+    Load all datasets from Google Cloud Storage in parallel (download + parse).
     
     Returns:
         Tuple of (financial_df, product_df, review_df)
@@ -52,36 +53,43 @@ def load_from_gcs() -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     logger.info("DATA SOURCE: Google Cloud Storage (GCS)")
     logger.info("=" * 80)
     
-    # Import GCS loader
     from ingestion.gcs_loader import load_financial_data, load_product_data, load_review_data
     
-    try:
-        # Load financial data (CSV)
-        financial_df = load_financial_data(
+    def _load_financial():
+        return load_financial_data(
             bucket_name=GCS_BUCKET_NAME,
             blob_name=FINANCIAL_BLOB,
             destination_path=FINANCIAL_RAW_PATH,
             credentials_path=GCP_CREDENTIALS_PATH,
-            project_id=GCP_PROJECT_ID
+            project_id=GCP_PROJECT_ID,
         )
-        
-        # Load product data (JSON)
-        product_df = load_product_data(
+    
+    def _load_product():
+        return load_product_data(
             bucket_name=GCS_BUCKET_NAME,
             blob_name=PRODUCT_BLOB,
             destination_path=PRODUCT_RAW_PATH,
             credentials_path=GCP_CREDENTIALS_PATH,
-            project_id=GCP_PROJECT_ID
+            project_id=GCP_PROJECT_ID,
         )
-        
-        # Load review data (JSON)
-        review_df = load_review_data(
+    
+    def _load_review():
+        return load_review_data(
             bucket_name=GCS_BUCKET_NAME,
             blob_name=REVIEW_BLOB,
             destination_path=REVIEW_RAW_PATH,
             credentials_path=GCP_CREDENTIALS_PATH,
-            project_id=GCP_PROJECT_ID
+            project_id=GCP_PROJECT_ID,
         )
+    
+    try:
+        with ThreadPoolExecutor(max_workers=3) as executor:
+            future_financial = executor.submit(_load_financial)
+            future_product = executor.submit(_load_product)
+            future_review = executor.submit(_load_review)
+            financial_df = future_financial.result()
+            product_df = future_product.result()
+            review_df = future_review.result()
         
         logger.info("=" * 80)
         logger.info("GCS DATA LOADING COMPLETE")
