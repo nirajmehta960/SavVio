@@ -7,7 +7,7 @@ Supports both CSV and JSON formats.
 import os
 import json
 import logging
-from typing import Optional, Union, Dict, Any
+from typing import Optional
 from pathlib import Path
 import pandas as pd
 from google.cloud import storage
@@ -59,6 +59,7 @@ class GCSLoader:
     ) -> str:
         """
         Download a single blob from GCS bucket.
+        Data versioning and caching are handled by DVC when tracking this directory.
         
         Args:
             bucket_name: Name of the GCS bucket
@@ -85,20 +86,6 @@ class GCSLoader:
                 raise FileNotFoundError(
                     f"Blob '{blob_name}' not found in bucket '{bucket_name}'"
                 )
-            
-            # Reload metadata to ensure we have the latest MD5
-            blob.reload()
-            
-            # Smart Download Check
-            if check_md5 and os.path.exists(destination_path):
-                remote_md5 = blob.md5_hash
-                local_md5 = self._calculate_md5(destination_path)
-                
-                if remote_md5 == local_md5:
-                    logger.info(f"Skipped download: {destination_path} (Up to date)")
-                    return destination_path
-                else:
-                    logger.info(f"File changed. Downloading update for {destination_path}")
             
             # Download the blob
             logger.info(f"Downloading gs://{bucket_name}/{blob_name} to {destination_path}")
@@ -175,7 +162,8 @@ class GCSLoader:
         destination_path: str
     ) -> pd.DataFrame:
         """
-        Download CSV from GCS and load into pandas DataFrame.
+        Download CSV from GCS and load into a DataFrame.
+        Raw financial data is always CSV; product and review are JSONL (use load_json_from_gcs).
         
         Args:
             bucket_name: Name of the GCS bucket
@@ -207,39 +195,28 @@ class GCSLoader:
         bucket_name: str,
         blob_name: str,
         destination_path: str
-    ) -> Union[Dict[str, Any], pd.DataFrame]:
+    ) -> pd.DataFrame:
         """
-        Download JSON from GCS and load into Python dict or DataFrame.
+        Download JSONL (JSON Lines) from GCS and load into a DataFrame.
+        Raw product and review data are always JSONL; financial is always CSV (use load_csv_from_gcs).
         
         Args:
             bucket_name: Name of the GCS bucket
-            blob_name: Path to the JSON file in the bucket
+            blob_name: Path to the JSONL file in the bucket
             destination_path: Local path where file should be saved
             
         Returns:
-            Dict or pd.DataFrame: Loaded data (DataFrame if JSON is list of records)
+            pd.DataFrame: One row per line in the JSONL file
         """
         try:
-            # Download the file
             local_path = self.download_blob(bucket_name, blob_name, destination_path)
-            
-            # Load JSON
-            logger.info(f"Loading JSON from {local_path}")
-            with open(local_path, 'r') as f:
-                data = json.load(f)
-            
-            # If it's a list of records, convert to DataFrame
-            if isinstance(data, list):
-                df = pd.DataFrame(data)
-                logger.info(f"Loaded {len(df)} records and {len(df.columns)} columns")
-                logger.info(f"Columns: {list(df.columns)}")
-                return df
-            else:
-                logger.info(f"Loaded JSON object with {len(data)} top-level keys")
-                return data
-            
+            logger.info(f"Loading JSONL from {local_path}")
+            df = pd.read_json(local_path, lines=True)
+            logger.info(f"Loaded {len(df)} records and {len(df.columns)} columns")
+            logger.info(f"Columns: {list(df.columns)}")
+            return df
         except Exception as e:
-            logger.error(f"Failed to load JSON from GCS: {e}")
+            logger.error(f"Failed to load JSONL from GCS: {e}")
             raise
     
     def upload_dataframe(
