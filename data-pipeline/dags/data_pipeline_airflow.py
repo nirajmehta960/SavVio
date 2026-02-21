@@ -10,6 +10,7 @@ from src.validation.run_validation import validate_raw, validate_processed, vali
 
 from datetime import datetime, timedelta
 from airflow import DAG
+from airflow.exceptions import AirflowException
 from airflow.providers.standard.operators.bash import BashOperator
 from airflow.providers.standard.operators.python import PythonOperator, BranchPythonOperator
 from airflow.providers.smtp.operators.smtp import EmailOperator
@@ -537,10 +538,21 @@ check_db_loading >> email_pipeline_success
 # ═══════════════════════════════════════════════════════════════════
 # SENTINEL — marks the DAG run as failed if any stage was skipped/failed
 # ═══════════════════════════════════════════════════════════════════
-pipeline_sentinel = BashOperator(
+def _check_pipeline_complete(**context):
+    """Fail the DAG run if the success email was not sent (i.e. pipeline didn't fully complete)."""
+    dag_run = context['dag_run']
+    success_ti = dag_run.get_task_instance('send_email_pipeline_success')
+    if success_ti is None or success_ti.state != 'success':
+        state = success_ti.state if success_ti else 'missing'
+        raise AirflowException(
+            f"Pipeline did not complete successfully — "
+            f"'send_email_pipeline_success' state is '{state}'"
+        )
+
+pipeline_sentinel = PythonOperator(
     task_id='pipeline_sentinel',
-    bash_command='echo "Pipeline completed successfully"',
-    trigger_rule=TriggerRule.ALL_SUCCESS,
+    python_callable=_check_pipeline_complete,
+    trigger_rule=TriggerRule.ALL_DONE,   # always runs, checks success email state
     dag=dag,
 )
 
