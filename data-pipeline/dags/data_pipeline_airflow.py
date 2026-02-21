@@ -87,7 +87,7 @@ SLACK_CHANNEL = "#group-34"
 # ---------- Default args ----------
 default_args = {
     'owner': 'Murtaza Nipplewala',
-    'start_date': datetime(2026, 2, 17),
+    'start_date': datetime(2026, 2, 21),
     'retries': 0,
     'retry_delay': timedelta(minutes=0.3),
     'email': 'murtaza.sn786@gmail.com',
