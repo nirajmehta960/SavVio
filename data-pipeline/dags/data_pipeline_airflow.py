@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+import logging
+import time
+
+logger = logging.getLogger(__name__)
+
 import sys
 from pathlib import Path
 from src.ingestion.run_ingestion import ingest_financial_task, ingest_product_task, ingest_review_task
@@ -42,11 +47,53 @@ dag = DAG(
 
 # -------------------- TASKS ------------------------
 
+# -------- Pipeline Start Logger --------
+
+def log_pipeline_start():
+    start_time = time.time()
+    logger.info("🚀 Data Pipeline started")
+    logger.info(f"Start timestamp: {start_time}")
+    return start_time
+
+
+log_start = PythonOperator(
+    task_id="log_pipeline_start",
+    python_callable=log_pipeline_start,
+    dag=dag,
+)
+
+
 send_email = EmailOperator(
     task_id="send_email",
     to="murtaza.sn786@gmail.com",
     subject="Notification from Data Pipeline Airflow",
     html_content="<p>This is a notification email sent from Data Pipeline Airflow.</p>",
+    dag=dag,
+)
+
+# -------- Ingestion Stage Logger --------
+
+def log_ingestion_start():
+    logger.info("📥 Ingestion stage started")
+    return time.time()
+
+def log_ingestion_end(ti):
+    start_time = ti.xcom_pull(task_ids="log_ingestion_start")
+    end_time = time.time()
+
+    if start_time:
+        duration = round(end_time - float(start_time), 2)
+        logger.info(f"📥 Ingestion stage completed in {duration} seconds")
+
+log_ingestion_start_task = PythonOperator(
+    task_id="log_ingestion_start",
+    python_callable=log_ingestion_start,
+    dag=dag,
+)
+
+log_ingestion_end_task = PythonOperator(
+    task_id="log_ingestion_end",
+    python_callable=log_ingestion_end,
     dag=dag,
 )
 
@@ -72,6 +119,33 @@ ingest_reviews = PythonOperator(
     dag=dag,
 )
 
+# -------- Preprocessing Stage Logger --------
+
+def log_preprocessing_start():
+    logger.info("🧹 Preprocessing stage started")
+    return time.time()
+
+def log_preprocessing_end(ti):
+    start_time = ti.xcom_pull(task_ids="log_preprocessing_start")
+    end_time = time.time()
+
+    if start_time:
+        duration = round(end_time - float(start_time), 2)
+        logger.info(f"🧹 Preprocessing stage completed in {duration} seconds")
+
+
+log_preprocessing_start_task = PythonOperator(
+    task_id="log_preprocessing_start",
+    python_callable=log_preprocessing_start,
+    dag=dag,
+)
+
+log_preprocessing_end_task = PythonOperator(
+    task_id="log_preprocessing_end",
+    python_callable=log_preprocessing_end,
+    dag=dag,
+)
+
 #----------------------------------------------------
 # Data Preprocessing  (runs in PARALLEL)
 #----------------------------------------------------
@@ -94,12 +168,57 @@ preprocess_reviews = PythonOperator(
     dag=dag,
 )
 
-# Ingestion fan-in → Preprocessing (all three run in parallel)
-[ingest_financial, ingest_products, ingest_reviews] >> [preprocess_financial, preprocess_products, preprocess_reviews]
+# Start → Ingestion Logger → Ingestion
+
+log_start >> log_ingestion_start_task
+log_ingestion_start_task >> [ingest_financial, ingest_products, ingest_reviews]
+
+# Ingestion fan-in → Ingestion End Logger
+
+[ingest_financial, ingest_products, ingest_reviews] >> log_ingestion_end_task
+
+# Ingestion End → Preprocessing Start Logger
+
+log_ingestion_end_task >> log_preprocessing_start_task
+
+# Preprocessing Start → Preprocessing Tasks
+
+log_preprocessing_start_task >> [preprocess_financial, preprocess_products, preprocess_reviews]
+
+# Preprocessing fan-in → Preprocessing End Logger
+
+[preprocess_financial, preprocess_products, preprocess_reviews] >> log_preprocessing_end_task
 
 #----------------------------------------------------
 # Feature Engineering  (runs in PARALLEL, after preprocessing)
 #----------------------------------------------------
+
+# -------- Feature Engineering Stage Logger --------
+
+def log_feature_start():
+    logger.info("⚙️ Feature Engineering stage started")
+    return time.time()
+
+def log_feature_end(ti):
+    start_time = ti.xcom_pull(task_ids="log_feature_start")
+    end_time = time.time()
+
+    if start_time:
+        duration = round(end_time - float(start_time), 2)
+        logger.info(f"⚙️ Feature Engineering stage completed in {duration} seconds")
+
+
+log_feature_start_task = PythonOperator(
+    task_id="log_feature_start",
+    python_callable=log_feature_start,
+    dag=dag,
+)
+
+log_feature_end_task = PythonOperator(
+    task_id="log_feature_end",
+    python_callable=log_feature_end,
+    dag=dag,
+)
 
 feature_financial = PythonOperator(
     task_id='feature_financial_data',
@@ -113,9 +232,17 @@ feature_reviews = PythonOperator(
     dag=dag,
 )
 
-# Preprocessing fan-in → Feature Engineering (both run in parallel)
-[preprocess_financial, preprocess_products, preprocess_reviews] >> [feature_financial, feature_reviews]
+# Preprocessing End → Feature Start Logger
 
+log_preprocessing_end_task >> log_feature_start_task
+
+# Feature Start → Feature Tasks
+
+log_feature_start_task >> [feature_financial, feature_reviews]
+
+# Feature fan-in → Feature End Logger
+
+[feature_financial, feature_reviews] >> log_feature_end_task
 
 
 #----------------------------------------------------
@@ -147,10 +274,14 @@ generate_embeddings = PythonOperator(
     dag=dag
 )
 
-# Feature Engineering fan-in → Loading
-[feature_financial, feature_reviews] >> [load_financial, load_products, load_reviews]
+# Feature End → Loading
+
+log_feature_end_task >> [load_financial, load_products, load_reviews]
 
 [load_financial, load_products, load_reviews] >> generate_embeddings
+
+generate_embeddings >> [bias_financial, bias_products]
+[bias_financial, bias_products] >> log_end
 
 #----------------------------------------------------
 # Airflow DAG for Bias Analysis
@@ -168,5 +299,23 @@ bias_products = PythonOperator(
     dag=dag
 )
 
-# Run in parallel since they analyze independent tracks.
-[bias_financial, bias_products] >> complete
+# -------- Pipeline End Logger --------
+
+def log_pipeline_end(ti):
+    start_time = ti.xcom_pull(task_ids="log_pipeline_start")
+    end_time = time.time()
+
+    if start_time:
+        duration = round(end_time - float(start_time), 2)
+        logger.info("✅ Data Pipeline completed successfully")
+        logger.info(f"Total runtime: {duration} seconds")
+    else:
+        logger.warning("Start time not found in XCom")
+
+
+log_end = PythonOperator(
+    task_id="log_pipeline_end",
+    python_callable=log_pipeline_end,
+    trigger_rule=TriggerRule.ALL_DONE,  # runs even if upstream fails
+    dag=dag,
+)
