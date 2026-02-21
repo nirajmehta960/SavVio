@@ -13,7 +13,7 @@ from airflow import DAG
 from airflow.providers.standard.operators.bash import BashOperator
 from airflow.providers.standard.operators.python import PythonOperator, BranchPythonOperator
 from airflow.providers.smtp.operators.smtp import EmailOperator
-from airflow.providers.slack.operators.slack_webhook import SlackWebhookOperator
+# from airflow.providers.slack.operators.slack_webhook import SlackWebhookOperator  # TODO: uncomment when Slack is configured
 from airflow.providers.standard.operators.trigger_dagrun import TriggerDagRunOperator
 from airflow.utils.trigger_rule import TriggerRule
 # from airflow.task.trigger_rule import TriggerRule new one, need to verify
@@ -82,7 +82,7 @@ def make_branch_check(upstream_ids, success_ids, failure_ids):
 
 # ---------- Constants ----------
 ALERT_EMAIL = "murtaza.sn786@gmail.com"
-SLACK_CHANNEL = "#group-34"
+# SLACK_CHANNEL = "#group-34"  # TODO: uncomment when Slack is configured
 
 # ---------- Default args ----------
 default_args = {
@@ -120,13 +120,13 @@ email_error_at_ingestion = EmailOperator(
     dag=dag,
 )
 
-slack_error_at_ingestion = SlackWebhookOperator(
-    task_id="send_slack_at_ingestion_error",
-    slack_webhook_conn_id="slack_webhook",
-    message=":red_circle: *SavVio Data Pipeline* — Error at *Ingestion* stage.",
-    channel=SLACK_CHANNEL,
-    dag=dag,
-)
+# slack_error_at_ingestion = SlackWebhookOperator(
+#     task_id="send_slack_at_ingestion_error",
+#     slack_webhook_conn_id="slack_webhook",
+#     message=":red_circle: *SavVio Data Pipeline* — Error at *Ingestion* stage.",
+#     channel=SLACK_CHANNEL,
+#     dag=dag,
+# )
 
 # --- Raw Validation Errors ---
 email_error_at_raw_validation = EmailOperator(
@@ -137,13 +137,13 @@ email_error_at_raw_validation = EmailOperator(
     dag=dag,
 )
 
-slack_error_at_raw_validation = SlackWebhookOperator(
-    task_id="send_slack_at_raw_validation_error",
-    slack_webhook_conn_id="slack_webhook",
-    message=":red_circle: *SavVio Data Pipeline* — Error at *Raw Validation* stage.",
-    channel=SLACK_CHANNEL,
-    dag=dag,
-)
+# slack_error_at_raw_validation = SlackWebhookOperator(
+#     task_id="send_slack_at_raw_validation_error",
+#     slack_webhook_conn_id="slack_webhook",
+#     message=":red_circle: *SavVio Data Pipeline* — Error at *Raw Validation* stage.",
+#     channel=SLACK_CHANNEL,
+#     dag=dag,
+# )
 
 # --- Preprocessing Errors ---
 email_error_at_preprocessing = EmailOperator(
@@ -154,13 +154,13 @@ email_error_at_preprocessing = EmailOperator(
     dag=dag,
 )
 
-slack_error_at_preprocessing = SlackWebhookOperator(
-    task_id="send_slack_at_preprocessing_error",
-    slack_webhook_conn_id="slack_webhook",
-    message=":red_circle: *SavVio Data Pipeline* — Error at *Preprocessing* stage.",
-    channel=SLACK_CHANNEL,
-    dag=dag,
-)
+# slack_error_at_preprocessing = SlackWebhookOperator(
+#     task_id="send_slack_at_preprocessing_error",
+#     slack_webhook_conn_id="slack_webhook",
+#     message=":red_circle: *SavVio Data Pipeline* — Error at *Preprocessing* stage.",
+#     channel=SLACK_CHANNEL,
+#     dag=dag,
+# )
 
 # --- Processed Validation Errors ---
 email_error_at_processed_validation = EmailOperator(
@@ -171,13 +171,13 @@ email_error_at_processed_validation = EmailOperator(
     dag=dag,
 )
 
-slack_error_at_processed_validation = SlackWebhookOperator(
-    task_id="send_slack_at_processed_validation_error",
-    slack_webhook_conn_id="slack_webhook",
-    message=":red_circle: *SavVio Data Pipeline* — Error at *Processed Validation* stage.",
-    channel=SLACK_CHANNEL,
-    dag=dag,
-)
+# slack_error_at_processed_validation = SlackWebhookOperator(
+#     task_id="send_slack_at_processed_validation_error",
+#     slack_webhook_conn_id="slack_webhook",
+#     message=":red_circle: *SavVio Data Pipeline* — Error at *Processed Validation* stage.",
+#     channel=SLACK_CHANNEL,
+#     dag=dag,
+# )
 
 # --- Feature Engineering Errors ---
 email_error_at_feature_engineering = EmailOperator(
@@ -188,13 +188,13 @@ email_error_at_feature_engineering = EmailOperator(
     dag=dag,
 )
 
-slack_error_at_feature_engineering = SlackWebhookOperator(
-    task_id="send_slack_at_feature_engineering_error",
-    slack_webhook_conn_id="slack_webhook",
-    message=":red_circle: *SavVio Data Pipeline* — Error at *Feature Engineering* stage.",
-    channel=SLACK_CHANNEL,
-    dag=dag,
-)
+# slack_error_at_feature_engineering = SlackWebhookOperator(
+#     task_id="send_slack_at_feature_engineering_error",
+#     slack_webhook_conn_id="slack_webhook",
+#     message=":red_circle: *SavVio Data Pipeline* — Error at *Feature Engineering* stage.",
+#     channel=SLACK_CHANNEL,
+#     dag=dag,
+# )
 
 # --- Featured Validation Errors ---
 email_error_at_featured_validation = EmailOperator(
@@ -205,13 +205,13 @@ email_error_at_featured_validation = EmailOperator(
     dag=dag,
 )
 
-slack_error_at_featured_validation = SlackWebhookOperator(
-    task_id="send_slack_at_featured_validation_error",
-    slack_webhook_conn_id="slack_webhook",
-    message=":red_circle: *SavVio Data Pipeline* — Error at *Featured Validation* stage.",
-    channel=SLACK_CHANNEL,
-    dag=dag,
-)
+# slack_error_at_featured_validation = SlackWebhookOperator(
+#     task_id="send_slack_at_featured_validation_error",
+#     slack_webhook_conn_id="slack_webhook",
+#     message=":red_circle: *SavVio Data Pipeline* — Error at *Featured Validation* stage.",
+#     channel=SLACK_CHANNEL,
+#     dag=dag,
+# )
 
 # --- DB Loading Errors ---
 email_error_at_DB_loading = EmailOperator(
@@ -222,13 +222,13 @@ email_error_at_DB_loading = EmailOperator(
     dag=dag,
 )
 
-slack_error_at_DB_loading = SlackWebhookOperator(
-    task_id="send_slack_at_DB_loading_error",
-    slack_webhook_conn_id="slack_webhook",
-    message=":red_circle: *SavVio Data Pipeline* — Error at *DB Loading* stage.",
-    channel=SLACK_CHANNEL,
-    dag=dag,
-)
+# slack_error_at_DB_loading = SlackWebhookOperator(
+#     task_id="send_slack_at_DB_loading_error",
+#     slack_webhook_conn_id="slack_webhook",
+#     message=":red_circle: *SavVio Data Pipeline* — Error at *DB Loading* stage.",
+#     channel=SLACK_CHANNEL,
+#     dag=dag,
+# )
 
 # --- Bias Analysis Errors (placeholder) ---
 # email_error_at_bias_analysis = EmailOperator(
@@ -260,13 +260,13 @@ email_pipeline_success = EmailOperator(
     dag=dag,
 )
 
-slack_pipeline_success = SlackWebhookOperator(
-    task_id="send_slack_pipeline_success",
-    slack_webhook_conn_id="slack_webhook",
-    message=":large_green_circle: *SavVio Data Pipeline* — Pipeline completed *successfully*. All data loaded into DB.",
-    channel=SLACK_CHANNEL,
-    dag=dag,
-)
+# slack_pipeline_success = SlackWebhookOperator(
+#     task_id="send_slack_pipeline_success",
+#     slack_webhook_conn_id="slack_webhook",
+#     message=":large_green_circle: *SavVio Data Pipeline* — Pipeline completed *successfully*. All data loaded into DB.",
+#     channel=SLACK_CHANNEL,
+#     dag=dag,
+# )
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -297,14 +297,16 @@ check_ingestion = BranchPythonOperator(
     python_callable=make_branch_check(
         upstream_ids=['ingest_financial_data', 'ingest_product_data', 'ingest_review_data'],
         success_ids=['validate_raw_data', 'validate_raw_anomalies'],
-        failure_ids=['send_email_at_ingestion_error', 'send_slack_at_ingestion_error'],
+        # failure_ids=['send_email_at_ingestion_error', 'send_slack_at_ingestion_error'],
+        failure_ids=['send_email_at_ingestion_error'],
     ),
     trigger_rule=TriggerRule.ALL_DONE,   # branch must always run so it can inspect results and route to errors
     dag=dag,
 )
 
 [ingest_financial, ingest_products, ingest_reviews] >> check_ingestion
-check_ingestion >> [email_error_at_ingestion, slack_error_at_ingestion]
+# check_ingestion >> [email_error_at_ingestion, slack_error_at_ingestion]
+check_ingestion >> email_error_at_ingestion
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -331,14 +333,16 @@ check_raw_validation = BranchPythonOperator(
     python_callable=make_branch_check(
         upstream_ids=['validate_raw_data'],
         success_ids=['preprocess_financial_data', 'preprocess_product_data', 'preprocess_review_data'],
-        failure_ids=['send_email_at_raw_validation_error', 'send_slack_at_raw_validation_error'],
+        # failure_ids=['send_email_at_raw_validation_error', 'send_slack_at_raw_validation_error'],
+        failure_ids=['send_email_at_raw_validation_error'],
     ),
     trigger_rule=TriggerRule.ALL_DONE,
     dag=dag,
 )
 
 validate_raw_data >> check_raw_validation
-check_raw_validation >> [email_error_at_raw_validation, slack_error_at_raw_validation]
+# check_raw_validation >> [email_error_at_raw_validation, slack_error_at_raw_validation]
+check_raw_validation >> email_error_at_raw_validation
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -371,14 +375,16 @@ check_preprocessing = BranchPythonOperator(
     python_callable=make_branch_check(
         upstream_ids=['preprocess_financial_data', 'preprocess_product_data', 'preprocess_review_data'],
         success_ids=['validate_processed_data'],
-        failure_ids=['send_email_at_preprocessing_error', 'send_slack_at_preprocessing_error'],
+        # failure_ids=['send_email_at_preprocessing_error', 'send_slack_at_preprocessing_error'],
+        failure_ids=['send_email_at_preprocessing_error'],
     ),
     trigger_rule=TriggerRule.ALL_DONE,
     dag=dag,
 )
 
 [preprocess_financial, preprocess_products, preprocess_reviews] >> check_preprocessing
-check_preprocessing >> [email_error_at_preprocessing, slack_error_at_preprocessing]
+# check_preprocessing >> [email_error_at_preprocessing, slack_error_at_preprocessing]
+check_preprocessing >> email_error_at_preprocessing
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -399,14 +405,16 @@ check_processed_validation = BranchPythonOperator(
     python_callable=make_branch_check(
         upstream_ids=['validate_processed_data'],
         success_ids=['feature_financial_data', 'feature_review_data'],
-        failure_ids=['send_email_at_processed_validation_error', 'send_slack_at_processed_validation_error'],
+        # failure_ids=['send_email_at_processed_validation_error', 'send_slack_at_processed_validation_error'],
+        failure_ids=['send_email_at_processed_validation_error'],
     ),
     trigger_rule=TriggerRule.ALL_DONE,
     dag=dag,
 )
 
 validate_processed_data >> check_processed_validation
-check_processed_validation >> [email_error_at_processed_validation, slack_error_at_processed_validation]
+# check_processed_validation >> [email_error_at_processed_validation, slack_error_at_processed_validation]
+check_processed_validation >> email_error_at_processed_validation
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -433,14 +441,16 @@ check_feature_engineering = BranchPythonOperator(
     python_callable=make_branch_check(
         upstream_ids=['feature_financial_data', 'feature_review_data'],
         success_ids=['validate_featured_data'],
-        failure_ids=['send_email_at_feature_engineering_error', 'send_slack_at_feature_engineering_error'],
+        # failure_ids=['send_email_at_feature_engineering_error', 'send_slack_at_feature_engineering_error'],
+        failure_ids=['send_email_at_feature_engineering_error'],
     ),
     trigger_rule=TriggerRule.ALL_DONE,
     dag=dag,
 )
 
 [feature_financial, feature_reviews] >> check_feature_engineering
-check_feature_engineering >> [email_error_at_feature_engineering, slack_error_at_feature_engineering]
+# check_feature_engineering >> [email_error_at_feature_engineering, slack_error_at_feature_engineering]
+check_feature_engineering >> email_error_at_feature_engineering
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -461,14 +471,16 @@ check_featured_validation = BranchPythonOperator(
     python_callable=make_branch_check(
         upstream_ids=['validate_featured_data'],
         success_ids=['load_financial_profiles', 'load_products', 'load_reviews'],
-        failure_ids=['send_email_at_featured_validation_error', 'send_slack_at_featured_validation_error'],
+        # failure_ids=['send_email_at_featured_validation_error', 'send_slack_at_featured_validation_error'],
+        failure_ids=['send_email_at_featured_validation_error'],
     ),
     trigger_rule=TriggerRule.ALL_DONE,
     dag=dag,
 )
 
 validate_featured_data >> check_featured_validation
-check_featured_validation >> [email_error_at_featured_validation, slack_error_at_featured_validation]
+# check_featured_validation >> [email_error_at_featured_validation, slack_error_at_featured_validation]
+check_featured_validation >> email_error_at_featured_validation
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -507,16 +519,20 @@ check_db_loading = BranchPythonOperator(
     task_id='check_db_loading',
     python_callable=make_branch_check(
         upstream_ids=['load_financial_profiles', 'load_products', 'load_reviews', 'generate_load_embeddings'],
-        success_ids=['send_email_pipeline_success', 'send_slack_pipeline_success'],
-        failure_ids=['send_email_at_DB_loading_error', 'send_slack_at_DB_loading_error'],
+        # success_ids=['send_email_pipeline_success', 'send_slack_pipeline_success'],
+        success_ids=['send_email_pipeline_success'],
+        # failure_ids=['send_email_at_DB_loading_error', 'send_slack_at_DB_loading_error'],
+        failure_ids=['send_email_at_DB_loading_error'],
     ),
     trigger_rule=TriggerRule.ALL_DONE,
     dag=dag,
 )
 
 generate_load_embeddings >> check_db_loading
-check_db_loading >> [email_error_at_DB_loading, slack_error_at_DB_loading]
-check_db_loading >> [email_pipeline_success, slack_pipeline_success]
+# check_db_loading >> [email_error_at_DB_loading, slack_error_at_DB_loading]
+check_db_loading >> email_error_at_DB_loading
+# check_db_loading >> [email_pipeline_success, slack_pipeline_success]
+check_db_loading >> email_pipeline_success
 
 
 # ═══════════════════════════════════════════════════════════════════
