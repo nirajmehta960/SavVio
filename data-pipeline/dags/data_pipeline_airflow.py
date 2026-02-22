@@ -519,8 +519,7 @@ generate_load_embeddings = PythonOperator(
 )
 
 check_featured_validation >> setup_database
-setup_database >> [load_financial, load_product, load_review]
-[load_financial, load_product, load_review] >> generate_load_embeddings
+setup_database >> [load_financial, load_product] >> load_review >> generate_load_embeddings
 
 # --- BRANCH: all DB loading succeeded? ---
 check_db_loading = BranchPythonOperator(
