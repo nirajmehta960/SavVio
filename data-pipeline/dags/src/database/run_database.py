@@ -30,10 +30,19 @@ logger = logging.getLogger(__name__)
 
 def _setup():
     """Create engine, ensure tables exist, return (data_dir, engine)."""
-    base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    # __file__ = .../dags/src/database/run_database.py
+    # We need 3 dirname() calls to reach .../dags/
+    base = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     data_dir = os.path.join(base, "data")
     engine = get_engine()
-    create_tables(engine)
+    try:
+        create_tables(engine)
+    except Exception as exc:
+        # Parallel tasks may race to CREATE TABLE; ignore "already exists"
+        if "already exists" in str(exc):
+            logger.warning("Tables already exist (parallel race) — continuing")
+        else:
+            raise
     return data_dir, engine
 
 
