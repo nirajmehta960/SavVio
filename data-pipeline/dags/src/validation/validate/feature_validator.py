@@ -56,7 +56,13 @@ logger = logging.getLogger(__name__)
 
 def _load(path: str) -> PandasDataset:
     if path.endswith(".jsonl"):
-        return gx.from_pandas(pd.read_json(path, lines=True))
+        # return gx.from_pandas(pd.read_json(path, lines=True))
+        file_size_mb = os.path.getsize(path) / (1024 * 1024)
+        if file_size_mb > 100:
+            df = pd.concat(pd.read_json(path, lines=True, chunksize=50_000), ignore_index=True)
+        else:
+            df = pd.read_json(path, lines=True)
+        return gx.from_pandas(df)
     return gx.from_pandas(pd.read_csv(path))
 
 
@@ -106,8 +112,8 @@ def _no_nan_inf(gdf: PandasDataset, col: str, ds: str,
 FINANCIAL_FEATURES = [
     "discretionary_income",
     "debt_to_income_ratio",
-    "savings_rate",
-    "expense_burden_ratio",
+    "saving_to_income_ratio",
+    "monthly_expense_burden_ratio",
     "emergency_fund_months",
 ]
 

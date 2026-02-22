@@ -10,6 +10,7 @@ Products must be loaded before reviews (FK dependency).
 """
 
 import json
+import os
 import logging
 import pandas as pd
 from sqlalchemy import text
@@ -47,8 +48,8 @@ FINANCIAL_COLS = {
     # Feature-engineered (included if present)
     "discretionary_income": "discretionary_income",
     "debt_to_income_ratio": "debt_to_income_ratio",
-    "savings_rate": "savings_rate",
-    "expense_burden_ratio": "expense_burden_ratio",
+    "saving_to_income_ratio": "saving_to_income_ratio",
+    "monthly_expense_burden_ratio": "monthly_expense_burden_ratio",
     "emergency_fund_months": "emergency_fund_months",
 }
 
@@ -58,6 +59,7 @@ PRODUCT_COLS = {
     "price": "price",
     "average_rating": "average_rating",
     "rating_number": "rating_number",
+    "rating_variance": "rating_variance",
     "description": "description",
     "features": "features",
     "details": "details",       # stored as JSONB
@@ -89,7 +91,13 @@ def _read_csv(path: str) -> pd.DataFrame:
 
 def _read_jsonl(path: str) -> pd.DataFrame:
     """Read a JSONL file (one JSON object per line)."""
-    df = pd.read_json(path, lines=True)
+    # df = pd.read_json(path, lines=True)
+    file_size_mb = os.path.getsize(path) / (1024 * 1024)
+    if file_size_mb > 100:
+        chunks = pd.read_json(path, lines=True, chunksize=50_000)
+        df = pd.concat(chunks, ignore_index=True)
+    else:
+        df = pd.read_json(path, lines=True)
     logger.info("Read %d rows from JSONL: %s", len(df), path)
     return df
 
@@ -197,6 +205,7 @@ def load_reviews(engine, jsonl_path: str, truncate: bool = True) -> int:
         df["verified_purchase"] = df["verified_purchase"].astype(bool)
     if "helpful_vote" in df.columns:
         df["helpful_vote"] = df["helpful_vote"].fillna(0).astype(int)
+
     if truncate:
         _truncate_table(engine, "reviews")
 

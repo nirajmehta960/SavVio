@@ -12,13 +12,14 @@ Processes in batches to keep memory usage reasonable.
 """
 
 import json
+import os
 import logging
 import pandas as pd
 import numpy as np
 from sqlalchemy import text
 
-from db_config import get_engine, ensure_pgvector
-from models import create_tables
+from db_connection import get_engine, ensure_pgvector
+from db_schema import create_tables
 # free. No API keys, no billing, no rate limits
 from sentence_transformers import SentenceTransformer
 
@@ -262,6 +263,10 @@ def embed_reviews(engine, reviews_path: str, model):
 def _read_file(path: str) -> pd.DataFrame:
     """Read CSV or JSONL based on file extension."""
     if path.endswith(".jsonl"):
+        # return pd.read_json(path, lines=True)
+        file_size_mb = os.path.getsize(path) / (1024 * 1024)
+        if file_size_mb > 100:
+            return pd.concat(pd.read_json(path, lines=True, chunksize=50_000), ignore_index=True)
         return pd.read_json(path, lines=True)
     return pd.read_csv(path)
 
