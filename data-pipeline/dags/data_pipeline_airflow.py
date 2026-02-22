@@ -5,7 +5,7 @@ from pathlib import Path
 from src.ingestion.run_ingestion import ingest_financial_task, ingest_product_task, ingest_review_task
 from src.preprocess.run_preprocessing import preprocess_financial_task, preprocess_product_task, preprocess_review_task
 from src.features.run_features import feature_financial_task, feature_review_task
-from src.database.run_database import load_financial_task, load_products_task, load_reviews_task, generate_and_load_embedding_task
+from src.database.run_database import setup_database_task, load_financial_task, load_products_task, load_reviews_task, generate_and_load_embedding_task
 from src.validation.run_validation import validate_raw, validate_processed, validate_features, validate_raw_anomalies
 
 from datetime import datetime, timedelta
@@ -471,7 +471,7 @@ check_featured_validation = BranchPythonOperator(
     task_id='check_featured_validation',
     python_callable=make_branch_check(
         upstream_ids=['validate_featured_data'],
-        success_ids=['load_financial_profiles', 'load_products', 'load_reviews'],
+        success_ids=['setup_database'],
         # failure_ids=['send_email_at_featured_validation_error', 'send_slack_at_featured_validation_error'],
         failure_ids=['send_email_at_featured_validation_error'],
     ),
@@ -487,6 +487,12 @@ check_featured_validation >> email_error_at_featured_validation
 # ═══════════════════════════════════════════════════════════════════
 # 7. LOADING DATA INTO POSTGRESQL  (branched from featured validation)
 # ═══════════════════════════════════════════════════════════════════
+
+setup_database = PythonOperator(
+    task_id='setup_database',
+    python_callable=setup_database_task,
+    dag=dag,
+)
 
 load_financial = PythonOperator(
     task_id='load_financial_profiles',
@@ -512,7 +518,8 @@ generate_load_embeddings = PythonOperator(
     dag=dag,
 )
 
-check_featured_validation >> [load_financial, load_product, load_review]
+check_featured_validation >> setup_database
+setup_database >> [load_financial, load_product, load_review]
 [load_financial, load_product, load_review] >> generate_load_embeddings
 
 # --- BRANCH: all DB loading succeeded? ---
