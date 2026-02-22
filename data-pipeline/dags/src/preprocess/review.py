@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from dataclasses import dataclass
 from typing import Dict, List, Set, Tuple
 
@@ -51,6 +52,7 @@ class PreprocessStats:
     removed_missing_parent_asin: int = 0
     removed_missing_user_id: int = 0
     removed_missing_rating: int = 0
+    removed_orphaned_reviews: int = 0
     duplicates_removed: int = 0
     final_rows: int = 0
 
@@ -97,6 +99,7 @@ def _process_batch(
     records: List[Dict[str, object]],
     seen_review_keys: Set[Tuple[str, str, str]],
     stats: PreprocessStats,
+    valid_product_ids: Set[str] = None,
 ) -> pd.DataFrame:
     """Apply deterministic transformations to one DataFrame batch."""
     if not records:
@@ -113,6 +116,13 @@ def _process_batch(
         df = df.loc[~missing_parent_mask].copy()
         parent_asin_norm = parent_asin_norm.loc[~missing_parent_mask]
     df["parent_asin"] = parent_asin_norm
+
+    if valid_product_ids is not None:
+        orphaned_mask = ~df["parent_asin"].isin(valid_product_ids)
+        removed_orphaned = int(orphaned_mask.sum())
+        if removed_orphaned:
+            stats.removed_orphaned_reviews += removed_orphaned
+            df = df.loc[~orphaned_mask].copy()
 
     # Drop rows where user_id is missing/empty.
     user_id_norm = df["user_id"].apply(_normalize_id)
@@ -177,9 +187,26 @@ def _print_snapshot(df: pd.DataFrame, title: str, rows: int = 5) -> None:
         print(df.head(rows).to_string(index=False))
 
 
-def preprocess_review_data(input_path: str, output_path: str) -> pd.DataFrame:
+def preprocess_review_data(input_path: str, output_path: str, products_path: str = None) -> pd.DataFrame:
     """Stream, preprocess, and persist review data as JSONL."""
     ensure_output_dir(output_path)
+
+    valid_product_ids = None
+    if products_path and os.path.exists(products_path):
+        valid_product_ids = set()
+        LOGGER.info("Loading valid product IDs from: %s", products_path)
+        try:
+            with open(products_path, "r", encoding="utf-8") as f:
+                for line in f:
+                    if not line.strip():
+                        continue
+                    record = json.loads(line)
+                    if "product_id" in record:
+                        valid_product_ids.add(str(record["product_id"]))
+            LOGGER.info("Loaded %d valid product IDs.", len(valid_product_ids))
+        except Exception as e:
+            LOGGER.error("Failed to load valid product IDs: %s. Proceeding without orphan check.", e)
+            valid_product_ids = None
 
     stats = PreprocessStats()
     seen_review_keys: Set[Tuple[str, str, str]] = set()
@@ -214,7 +241,7 @@ def preprocess_review_data(input_path: str, output_path: str) -> pd.DataFrame:
             batch_records.append(record)
 
             if len(batch_records) >= BATCH_SIZE:
-                cleaned_batch = _process_batch(batch_records, seen_review_keys, stats)
+                cleaned_batch = _process_batch(batch_records, seen_review_keys, stats, valid_product_ids)
                 if not cleaned_batch.empty:
                     for item in cleaned_batch.to_dict(orient="records"):
                         outfile.write(json.dumps(item, ensure_ascii=True) + "\n")
@@ -227,7 +254,7 @@ def preprocess_review_data(input_path: str, output_path: str) -> pd.DataFrame:
 
         # Flush final incomplete batch.
         if batch_records:
-            cleaned_batch = _process_batch(batch_records, seen_review_keys, stats)
+            cleaned_batch = _process_batch(batch_records, seen_review_keys, stats, valid_product_ids)
             if not cleaned_batch.empty:
                 for item in cleaned_batch.to_dict(orient="records"):
                     outfile.write(json.dumps(item, ensure_ascii=True) + "\n")
@@ -259,6 +286,7 @@ def preprocess_review_data(input_path: str, output_path: str) -> pd.DataFrame:
         stats.removed_missing_parent_asin + stats.removed_missing_user_id + stats.removed_missing_rating,
     )
     LOGGER.info("Rows dropped (missing parent_asin): %d", stats.removed_missing_parent_asin)
+    LOGGER.info("Rows dropped (orphaned reviews): %d", stats.removed_orphaned_reviews)
     LOGGER.info("Rows dropped (missing user_id): %d", stats.removed_missing_user_id)
     LOGGER.info("Rows dropped (missing rating): %d", stats.removed_missing_rating)
     LOGGER.info("Final row count: %d", stats.final_rows)
@@ -272,7 +300,8 @@ def main() -> None:
     setup_logging()
     input_path = get_raw_path(INPUT_FILENAME)
     output_path = get_processed_path(OUTPUT_FILENAME, base_dir="data/processed")
-    preprocess_review_data(input_path=input_path, output_path=output_path)
+    products_path = get_processed_path("product_preprocessed.jsonl", base_dir="data/processed")
+    preprocess_review_data(input_path=input_path, output_path=output_path, products_path=products_path)
 
 
 if __name__ == "__main__":

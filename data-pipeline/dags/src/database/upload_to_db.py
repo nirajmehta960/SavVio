@@ -197,7 +197,6 @@ def load_reviews(engine, jsonl_path: str, truncate: bool = True) -> int:
         df["verified_purchase"] = df["verified_purchase"].astype(bool)
     if "helpful_vote" in df.columns:
         df["helpful_vote"] = df["helpful_vote"].fillna(0).astype(int)
-
     if truncate:
         _truncate_table(engine, "reviews")
 
