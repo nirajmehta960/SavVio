@@ -1,12 +1,12 @@
 import pandas as pd
 import pytest
-from preprocess_scripts.preprocess.financial import preprocess_financial_data
+import sys
+from pathlib import Path
+sys.path.append(str(Path(__file__).resolve().parent.parent))
+from dags.src.preprocess.financial import preprocess_financial_data
 
 def test_anomaly_extreme_values(tmp_path):
-    """
-    Test that records with extreme or out-of-range values
-    (e.g., invalid credit scores) are properly filtered out.
-    """
+    """Test: Verify that data is dropped when values are outside business logic boundaries (e.g. credit score is negative or too high)"""
     test_data = {
         "user_id": [1, 2],
         "monthly_income_usd": [5000, 5000],
@@ -17,7 +17,7 @@ def test_anomaly_extreme_values(tmp_path):
         "monthly_emi_usd": [0, 0],
         "loan_interest_rate_pct": [0, 0],
         "loan_term_months": [0, 0],
-        "credit_score": [999, -50],  # Both values are outside the valid credit score range (300–850)
+        "credit_score": [999, -50],  # Both values are outside the 300-850 standard range
         "employment_status": ["FT", "FT"],
         "region": ["US", "US"]
     }
@@ -27,5 +27,5 @@ def test_anomaly_extreme_values(tmp_path):
     
     processed = preprocess_financial_data(str(in_p), str(out_p))
     
-    # Both rows should be filtered out due to invalid credit scores
+    # Verification: Both anomalous records should be filtered out, resulting in empty output
     assert len(processed) == 0

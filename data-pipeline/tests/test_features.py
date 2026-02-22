@@ -1,16 +1,14 @@
 import pandas as pd
 import numpy as np
 import pytest
-from preprocess_scripts.preprocess.financial import preprocess_financial_data
-
+import sys
+from pathlib import Path
+sys.path.append(str(Path(__file__).resolve().parent.parent))
+from dags.src.preprocess.financial import preprocess_financial_data
 
 def test_feature_creation_logic(tmp_path):
-    """
-    Test that preprocessing correctly creates expected features
-    and applies proper type conversions.
-    """
-
-    # Create input data matching expected financial schema
+    """Test: Verify if preprocessed data contains the correct feature columns and types"""
+    # Create original column data matching financial.py expectations
     test_data = {
         "user_id": [1],
         "monthly_income_usd": [10000],
@@ -25,30 +23,24 @@ def test_feature_creation_logic(tmp_path):
         "employment_status": ["Full-time"],
         "region": ["North"]
     }
-
-    # Create temporary input/output paths
+    
+    # Create temporary input and output paths
     in_p = tmp_path / "in.csv"
     out_p = tmp_path / "out.csv"
-
     pd.DataFrame(test_data).to_csv(in_p, index=False)
-
-    # Run preprocessing
+    
+    # Execute preprocessing function
     processed = preprocess_financial_data(str(in_p), str(out_p))
-
-    # Validation 1: Numeric transformation correctness
-    # income_usd should match original monthly_income_usd
-    assert processed.iloc[0]["income_usd"] == 10000
-
-    # Validation 2: Categorical encoding correctness
-    # 'Yes' should be converted to 1
+    
+    # Verification 1: Whether values are correctly translated (e.g. monthly_income corresponds to original 10000)
+    assert processed.iloc[0]["monthly_income"] == 10000
+    
+    # Verification 2: Whether categories are correctly translated ('Yes' becomes 1)
     assert processed.iloc[0]["has_loan"] == 1
+    
+    # Verification 3: Type checking (fixes NumPy type compatibility issues)
+    # Use np.integer and np.floating to simultaneously support Python built-ins and NumPy numeric types
+    assert isinstance(processed.iloc[0]["credit_score"], (int, float, np.integer, np.floating))
 
-    # Validation 3: Type compatibility check
-    # Ensure compatibility with both Python native and NumPy numeric types
-    assert isinstance(
-        processed.iloc[0]["credit_score"],
-        (int, float, np.integer, np.floating)
-    )
-
-    # Validation 4: Ensure output file is generated
+    # Verification 4: Ensure the output file actually exists
     assert out_p.exists()

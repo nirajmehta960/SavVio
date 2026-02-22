@@ -1,17 +1,15 @@
 import pandas as pd
 import pytest
-from preprocess_scripts.preprocess.financial import preprocess_financial_data
-
+import sys
+from pathlib import Path
+sys.path.append(str(Path(__file__).resolve().parent.parent))
+from dags.src.preprocess.financial import preprocess_financial_data
 
 def test_validation_invalid_types(tmp_path):
-    """
-    Test that preprocessing correctly handles invalid data types
-    (e.g., string values in numeric fields).
-    """
-
+    """Test: When numeric column contains text, system should handle it correctly (convert to NaN or error)"""
     bad_data = pd.DataFrame({
         "user_id": [1],
-        "monthly_income_usd": ["invalid_string"],  # Invalid numeric type
+        "monthly_income_usd": ["invalid_string"],  # Incorrect type
         "monthly_expenses_usd": [1000],
         "savings_usd": [500],
         "has_loan": ["No"],
@@ -23,13 +21,11 @@ def test_validation_invalid_types(tmp_path):
         "employment_status": ["employed"],
         "region": ["US"]
     })
-
+    
     in_p = tmp_path / "bad_type.csv"
     out_p = tmp_path / "output.csv"
-
     bad_data.to_csv(in_p, index=False)
-
+    
     processed = preprocess_financial_data(str(in_p), str(out_p))
-
-    # The row should be removed due to invalid numeric input
+    # Verify this record gets dropped (since income isn't a valid number)
     assert len(processed) == 0

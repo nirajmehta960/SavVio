@@ -1,18 +1,15 @@
 import pandas as pd
 import pytest
-from preprocess_scripts.preprocess.financial import preprocess_financial_data
-
+import sys
+from pathlib import Path
+sys.path.append(str(Path(__file__).resolve().parent.parent))
+from dags.src.preprocess.financial import preprocess_financial_data
 
 def test_financial_columns_exist(tmp_path):
-    """
-    Test that preprocessing produces a non-empty dataset
-    and includes expected transformed columns.
-    """
-
-    # 1. Create sample input data
+    # 1. Create mock data
     data = pd.DataFrame({
         "user_id": [1],
-        "monthly_income_usd": [5000],
+        "monthly_income_usd": [5000],  # Note: This is the original column name
         "monthly_expenses_usd": [1000],
         "savings_usd": [500],
         "has_loan": [0],
@@ -29,12 +26,12 @@ def test_financial_columns_exist(tmp_path):
     input_csv = tmp_path / "test_input.csv"
     output_csv = tmp_path / "test_output.csv"
 
-    # 3. Save input data as CSV
+    # 3. Save mock data as CSV (since the function reads CSV)
     data.to_csv(input_csv, index=False)
 
-    # 4. Run preprocessing
+    # 4. Call function with input path and output path
     processed = preprocess_financial_data(str(input_csv), str(output_csv))
 
-    # 5. Validate results
+    # 5. Verify results
     assert not processed.empty
-    assert "income_usd" in processed.columns
+    assert "monthly_income" in processed.columns

@@ -1,20 +1,17 @@
 import pandas as pd
 import pytest
-from preprocess_scripts.preprocess.financial import preprocess_financial_data
+import sys
+from pathlib import Path
+sys.path.append(str(Path(__file__).resolve().parent.parent))
 
+from dags.src.preprocess.financial import preprocess_financial_data
 
 def test_bias_region_distribution(tmp_path):
-    """
-    Test that preprocessing does not disproportionately remove
-    records from specific regions.
-    """
-
-    # Create a balanced dataset across regions
+    """Test: Ensure preprocessing does not disproportionately delete data from specific regions"""
+    # Create a balanced dataset across multiple regions
     regions = ["North", "South", "East", "West"]
     test_rows = []
-
-    # Create 100 rows total (25 per region)
-    for i, region in enumerate(regions * 25):
+    for i, region in enumerate(regions * 25):  # Total 100 records, 25 per region
         test_rows.append({
             "user_id": i,
             "monthly_income_usd": 5000,
@@ -29,19 +26,18 @@ def test_bias_region_distribution(tmp_path):
             "employment_status": "Full-time",
             "region": region
         })
-
-    in_path = tmp_path / "bias_in.csv"
-    out_path = tmp_path / "bias_out.csv"
-
-    pd.DataFrame(test_rows).to_csv(in_path, index=False)
-
-    processed = preprocess_financial_data(str(in_path), str(out_path))
-
-    # Validation 1: Ensure all regions still exist after preprocessing
+    
+    in_p, out_p = tmp_path / "bias_in.csv", tmp_path / "bias_out.csv"
+    pd.DataFrame(test_rows).to_csv(in_p, index=False)
+    
+    processed = preprocess_financial_data(str(in_p), str(out_p))
+    
+    # Verification 1: Confirm all regions still exist after processing (no region is erroneously wiped out)
     unique_regions = processed["region"].unique()
     assert set(unique_regions) == set(regions)
-
-    # Validation 2: Ensure each region still has at least one record
+    
+    # Verification 2: Confirm distribution proportion is maintained (in this simple case, proportions should remain unchanged)
     region_counts = processed["region"].value_counts()
     for region in regions:
+        # Ensure each region has at least some data remaining
         assert region_counts[region] > 0
