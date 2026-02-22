@@ -50,7 +50,7 @@ class Product(Base):
 
     id              = Column(Integer, primary_key=True, autoincrement=True)
     product_id      = Column(String(100), unique=True, nullable=False)  # parent_asin
-    product_name    = Column(String(500), nullable=False)
+    product_name    = Column(Text, nullable=False)
     price           = Column(Float, nullable=False)
     average_rating  = Column(Float)
     rating_number   = Column(Integer)
@@ -58,7 +58,7 @@ class Product(Base):
     description     = Column(Text)
     features        = Column(Text)
     details         = Column(JSON)        # stored as JSONB in PostgreSQL
-    category        = Column(String(200))
+    category        = Column(Text)
     created_at      = Column(DateTime, server_default=func.now())
 
 
