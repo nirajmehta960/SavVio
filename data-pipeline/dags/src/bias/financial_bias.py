@@ -37,7 +37,7 @@ VULNERABLE_GROUPS: Dict[str, List[str]] = {
 
 def _default_financial_path() -> Path:
     repo_root = Path(__file__).resolve().parents[4]
-    return repo_root / "data-pipeline" / "data" / "features" / "financial_featured.csv"
+    return repo_root / "data-pipeline" / "dags" / "data" / "features" / "financial_featured.csv"
 
 
 def load_financial_features(input_path: Optional[str] = None) -> pd.DataFrame:

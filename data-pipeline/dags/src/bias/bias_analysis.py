@@ -39,8 +39,8 @@ def main() -> None:
     logger = setup_logging()
     repo_root = resolve_repo_root()
 
-    financial_path = repo_root / "data-pipeline" / "data" / "features" / "financial_featured.csv"
-    review_path = repo_root / "data-pipeline" / "data" / "features" / "reviews_featured.jsonl"
+    financial_path = repo_root / "data-pipeline" / "dags" / "data" / "features" / "financial_featured.csv"
+    review_path = repo_root / "data-pipeline" / "dags" / "data" / "features" / "reviews_featured.jsonl"
 
     logger.info("Starting bias analysis...")
     logger.info("Financial feature input: %s", financial_path)

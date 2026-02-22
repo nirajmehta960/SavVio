@@ -16,7 +16,7 @@ RATING_GROUP_ORDER = ["consensus", "Mixed", "Polarized"]
 
 def _default_reviews_path() -> Path:
     repo_root = Path(__file__).resolve().parents[4]
-    return repo_root / "data-pipeline" / "data" / "features" / "reviews_featured.jsonl"
+    return repo_root / "data-pipeline" / "dags" / "data" / "features" / "reviews_featured.jsonl"
 
 
 def load_review_features(input_path: Optional[str] = None) -> pd.DataFrame:
