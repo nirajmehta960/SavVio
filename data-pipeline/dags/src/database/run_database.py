@@ -29,20 +29,12 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 def _setup():
-    """Create engine, ensure tables exist, return (data_dir, engine)."""
+    """Create engine, return (data_dir, engine)."""
     # __file__ = .../dags/src/database/run_database.py
     # We need 3 dirname() calls to reach .../dags/
     base = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     data_dir = os.path.join(base, "data")
     engine = get_engine()
-    try:
-        create_tables(engine)
-    except Exception as exc:
-        # Parallel tasks may race to CREATE TABLE; ignore "already exists"
-        if "already exists" in str(exc):
-            logger.warning("Tables already exist (parallel race) — continuing")
-        else:
-            raise
     return data_dir, engine
 
 
@@ -51,6 +43,15 @@ def _setup():
 # ---------------------------------------------------------------------------
 
 #TODO: data added to DB might change after bias detection and mitigation
+
+def setup_database_task(**context):
+    """Airflow task: drop and recreate PostgreSQL tables."""
+    logger.info(">>> Setting up database schema (dropping old tables)...")
+    engine = get_engine()
+    from db_schema import drop_tables, create_tables
+    drop_tables(engine)
+    create_tables(engine)
+    logger.info(">>> Database Setup: SUCCESS")
 
 def load_financial_task(**context):
     """Airflow task: load financial profiles into PostgreSQL."""
@@ -64,7 +65,7 @@ def load_products_task(**context):
     """Airflow task: load products into PostgreSQL."""
     logger.info(">>> Loading Products into PostgreSQL...")
     data, engine = _setup()
-    load_products(engine, os.path.join(data, "features/products_featured.jsonl"))
+    load_products(engine, os.path.join(data, "features/product_featured.jsonl"))
     logger.info(">>> Products Load: SUCCESS")
 
 
@@ -72,7 +73,7 @@ def load_reviews_task(**context):
     """Airflow task: load reviews into PostgreSQL."""
     logger.info(">>> Loading Reviews into PostgreSQL...")
     data, engine = _setup()
-    load_reviews(engine, os.path.join(data, "features/reviews_featured.jsonl"))
+    load_reviews(engine, os.path.join(data, "features/review_featured.jsonl"))
     logger.info(">>> Reviews Load: SUCCESS")
 
 
@@ -87,14 +88,14 @@ def generate_and_load_embedding_task(**context):
 
     n_prod = embed_products(
         engine,
-        os.path.join(data, "features/products_featured.jsonl"),
+        os.path.join(data, "features/product_featured.jsonl"),
         model,
     )
     logger.info("Embedded %d products", n_prod)
 
     n_rev = embed_reviews(
         engine,
-        os.path.join(data, "features/reviews_featured.jsonl"),
+        os.path.join(data, "features/review_featured.jsonl"),
         model,
     )
     logger.info("Embedded %d reviews", n_rev)

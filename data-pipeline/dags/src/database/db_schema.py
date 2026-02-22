@@ -85,6 +85,10 @@ class Review(Base):
 # Helper to create all tables
 # ---------------------------------------------------------------------------
 
+def drop_tables(engine):
+    """Drop all tables that exist in the database."""
+    Base.metadata.drop_all(engine)
+
 def create_tables(engine):
     """Create all tables that don't already exist."""
     Base.metadata.create_all(engine, checkfirst=True)
