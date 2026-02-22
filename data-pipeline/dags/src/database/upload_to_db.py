@@ -59,6 +59,7 @@ PRODUCT_COLS = {
     "price": "price",
     "average_rating": "average_rating",
     "rating_number": "rating_number",
+    "rating_variance": "rating_variance",
     "description": "description",
     "features": "features",
     "details": "details",       # stored as JSONB

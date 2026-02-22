@@ -54,6 +54,7 @@ class Product(Base):
     price           = Column(Float, nullable=False)
     average_rating  = Column(Float)
     rating_number   = Column(Integer)
+    rating_variance = Column(Float)
     description     = Column(Text)
     features        = Column(Text)
     details         = Column(JSON)        # stored as JSONB in PostgreSQL
