@@ -110,11 +110,10 @@ def generate_embeddings(texts: list[str], model) -> np.ndarray:
     Encode a list of texts into embeddings, batched.
     Returns numpy array of shape (len(texts), EMBEDDING_DIM).
     """
-    logger.info("Generating embeddings for %d texts (batch_size=%d)", len(texts), BATCH_SIZE)
     embeddings = model.encode(
         texts,
         batch_size=BATCH_SIZE,
-        show_progress_bar=True,
+        show_progress_bar=False,  # Disabled tqdm as it doesn't work well in Airflow logs
         normalize_embeddings=True,
     )
     return embeddings
@@ -223,8 +222,20 @@ def embed_products(engine, products_path: str, model):
     df = df[df["_embed_text"].str.strip().astype(bool)].reset_index(drop=True)
     logger.info("Products with non-empty embedding text: %d", len(df))
 
-    embeddings = generate_embeddings(df["_embed_text"].tolist(), model)
-    store_product_embeddings(engine, df["product_id"].tolist(), embeddings)
+    texts = df["_embed_text"].tolist()
+    product_ids = df["product_id"].tolist()
+    total = len(texts)
+    
+    # Process and store in chunks to provide explicit progress logs
+    chunk_size = 5000
+    for i in range(0, total, chunk_size):
+        chunk_texts = texts[i : i + chunk_size]
+        chunk_pids = product_ids[i : i + chunk_size]
+        
+        logger.info("Generating embeddings for products %d to %d (out of %d)...", i, i + len(chunk_texts), total)
+        embeddings = generate_embeddings(chunk_texts, model)
+        store_product_embeddings(engine, chunk_pids, embeddings)
+        
     return len(df)
 
 
@@ -251,8 +262,22 @@ def embed_reviews(engine, reviews_path: str, model):
         logger.warning("No reviews with text found — skipping review embeddings")
         return 0
 
-    embeddings = generate_embeddings(df["_embed_text"].tolist(), model)
-    store_review_embeddings(engine, df["product_id"].tolist(), df["user_id"].tolist(), embeddings)
+    texts = df["_embed_text"].tolist()
+    product_ids = df["product_id"].tolist()
+    user_ids = df["user_id"].tolist()
+    total = len(texts)
+    
+    # Process and store in chunks to provide explicit progress logs
+    chunk_size = 5000
+    for i in range(0, total, chunk_size):
+        chunk_texts = texts[i : i + chunk_size]
+        chunk_pids = product_ids[i : i + chunk_size]
+        chunk_uids = user_ids[i : i + chunk_size]
+        
+        logger.info("Generating embeddings for reviews %d to %d (out of %d)...", i, i + len(chunk_texts), total)
+        embeddings = generate_embeddings(chunk_texts, model)
+        store_review_embeddings(engine, chunk_pids, chunk_uids, embeddings)
+
     return len(df)
 
 
