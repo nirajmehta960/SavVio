@@ -179,7 +179,7 @@ def store_product_embeddings(engine, product_ids: list[str], embeddings: np.ndar
     logger.info("Storing %d product embeddings", len(product_ids))
     sql = text("""
         INSERT INTO product_embeddings (product_id, embedding)
-        VALUES (:pid, :emb::vector)
+        VALUES (:pid, CAST(:emb AS vector))
         ON CONFLICT (product_id) DO UPDATE SET embedding = EXCLUDED.embedding
     """)
     with engine.begin() as conn:
@@ -193,7 +193,7 @@ def store_review_embeddings(engine, product_ids: list[str], user_ids: list[str],
     logger.info("Storing %d review embeddings", len(product_ids))
     sql = text("""
         INSERT INTO review_embeddings (product_id, user_id, embedding)
-        VALUES (:pid, :uid, :emb::vector)
+        VALUES (:pid, :uid, CAST(:emb AS vector))
         ON CONFLICT (product_id, user_id) DO UPDATE SET embedding = EXCLUDED.embedding
     """)
     with engine.begin() as conn:
