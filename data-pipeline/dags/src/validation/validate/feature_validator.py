@@ -56,7 +56,13 @@ logger = logging.getLogger(__name__)
 
 def _load(path: str) -> PandasDataset:
     if path.endswith(".jsonl"):
-        return gx.from_pandas(pd.read_json(path, lines=True))
+        # return gx.from_pandas(pd.read_json(path, lines=True))
+        file_size_mb = os.path.getsize(path) / (1024 * 1024)
+        if file_size_mb > 300:
+            df = pd.concat(pd.read_json(path, lines=True, chunksize=100_000), ignore_index=True)
+        else:
+            df = pd.read_json(path, lines=True)
+        return gx.from_pandas(df)
     return gx.from_pandas(pd.read_csv(path))
 
 
@@ -106,8 +112,8 @@ def _no_nan_inf(gdf: PandasDataset, col: str, ds: str,
 FINANCIAL_FEATURES = [
     "discretionary_income",
     "debt_to_income_ratio",
-    "savings_rate",
-    "expense_burden_ratio",
+    "saving_to_income_ratio",
+    "monthly_expense_burden_ratio",
     "emergency_fund_months",
 ]
 
@@ -366,7 +372,7 @@ def validate_formula_spot_checks(gdf: PandasDataset) -> list[CheckResult]:
 
 def run_feature_validation(
     financial_path: str = "data/features/financial_featured.csv",
-    reviews_path: str = "data/features/product_rating_variance.csv",
+    reviews_path: str = "data/features/product_featured.jsonl",
     threshold_config: Optional[str] = "config/validation_thresholds.json",
 ) -> ValidationReport:
     """Run all feature validations."""
@@ -449,7 +455,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Validate SavVio features")
     parser.add_argument("--financial-features", default="data/features/financial_featured.csv")
-    parser.add_argument("--review-features", default="data/features/product_rating_variance.csv")
+    parser.add_argument("--review-features", default="data/features/product_featured.jsonl")
     parser.add_argument("--thresholds", default=None)
     args = parser.parse_args()
 
