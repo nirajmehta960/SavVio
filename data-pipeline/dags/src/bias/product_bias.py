@@ -1,15 +1,27 @@
-"""Phase 15 representation bias detection for SavVio product datasets."""
+"""
+Bias Detection for SavVio Product Data.
+
+Analyzes all columns in product_preprocessed.jsonl + product_featured.jsonl
+for representation gaps, underrepresented groups, and missingness bias.
+
+Input: data/processed/product_preprocessed.jsonl
+       data/features/product_featured.jsonl (optional merge)
+Output: Terminal-only log output (no files written)
+"""
 
 from __future__ import annotations
 
 import argparse
 import json
+import logging
 import math
 import os
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import pandas as pd
+
+logger = logging.getLogger(__name__)
 
 
 BOOL_TRUE = {"1", "true", "yes", "y", "t"}
@@ -33,17 +45,16 @@ class FlagItem:
     reason: str
 
 
+# ---------------------------------------------------------------------------
+# Low-level helpers
+# ---------------------------------------------------------------------------
+
 def _norm(text: str) -> str:
     return text.strip().lower()
 
 
 def _pct(count: int, total: int) -> float:
     return round((count / total * 100.0), 2) if total else 0.0
-
-
-def _print_header(title: str) -> None:
-    print(f"\n{title}")
-    print("-" * len(title))
 
 
 def _safe_json_parse(value: Any) -> Any:
@@ -90,6 +101,10 @@ def _is_dict_column(name: str, series: pd.Series) -> bool:
     return bool(parsed.apply(lambda x: isinstance(x, dict)).mean() > 0.7)
 
 
+# ---------------------------------------------------------------------------
+# Column type inference
+# ---------------------------------------------------------------------------
+
 def _infer_column_type(name: str, series: pd.Series) -> str:
     n = _norm(name)
     non_missing = series[~_missing_mask_generic(series)]
@@ -120,6 +135,10 @@ def _infer_column_type(name: str, series: pd.Series) -> str:
     return "categorical"
 
 
+# ---------------------------------------------------------------------------
+# Slice helpers
+# ---------------------------------------------------------------------------
+
 def _slice_counts(labels: pd.Series, total: int, sort_index: bool = False) -> List[SliceStat]:
     counts = labels.value_counts(dropna=False, sort=not sort_index)
     if sort_index:
@@ -127,10 +146,14 @@ def _slice_counts(labels: pd.Series, total: int, sort_index: bool = False) -> Li
     return [SliceStat(str(k), int(v), _pct(int(v), total)) for k, v in counts.items()]
 
 
-def _print_slice_stats(stats: List[SliceStat]) -> None:
+def _log_slice_stats(stats: List[SliceStat]) -> None:
     for s in stats:
-        print(f"  - {s.label}: {s.count} ({s.pct}%)")
+        logger.info(f"  - {s.label}: {s.count} ({s.pct}%)")
 
+
+# ---------------------------------------------------------------------------
+# Numeric banding (domain-specific)
+# ---------------------------------------------------------------------------
 
 def _numeric_slices(column: str, numeric: pd.Series) -> Tuple[pd.Series, List[str]]:
     name = _norm(column)
@@ -183,6 +206,10 @@ def _numeric_slices(column: str, numeric: pd.Series) -> Tuple[pd.Series, List[st
     return labels, []
 
 
+# ---------------------------------------------------------------------------
+# Type-specific profilers
+# ---------------------------------------------------------------------------
+
 def _categorical_profile(column: str, series: pd.Series, total: int) -> Tuple[List[SliceStat], List[FlagItem]]:
     labels = series.astype(str).str.strip().where(~_missing_mask_generic(series), "Missing")
     stats = _slice_counts(labels, total)
@@ -224,7 +251,6 @@ def _list_profile(column: str, series: pd.Series, total: int) -> Tuple[List[Slic
         flags.append(FlagItem(column, "0", f"Empty list share >20% ({empty_share}%)."))
     if n == "images" and empty_share > 10.0:
         flags.append(FlagItem(column, "0", f"Images empty share >10% ({empty_share}%)."))
-    # videos empty is reported but intentionally not flagged unless required.
     return stats, flags
 
 
@@ -243,7 +269,7 @@ def _details_profile(column: str, series: pd.Series, total: int) -> Tuple[List[S
     if empty_share > 20.0:
         flags.append(FlagItem(column, "Missing/Empty", f"Details missing/empty >20% ({empty_share}%)."))
 
-    # Key-level completeness + brand distribution
+    # Key-level completeness + brand distribution.
     key_rows: Dict[str, int] = {k: 0 for k in COMMON_DETAIL_KEYS}
     brand_values: List[str] = []
     for value in parsed:
@@ -254,16 +280,16 @@ def _details_profile(column: str, series: pd.Series, total: int) -> Tuple[List[S
             if "Brand" in value and str(value["Brand"]).strip() != "":
                 brand_values.append(str(value["Brand"]).strip())
 
-    print("  - details key missingness:")
+    logger.info("  - details key missingness:")
     for key in COMMON_DETAIL_KEYS:
         miss_pct = _pct(total - key_rows[key], total)
-        print(f"    - {key}: {miss_pct}% missing")
+        logger.info(f"    - {key}: {miss_pct}% missing")
 
     if brand_values:
         brand_counts = pd.Series(brand_values).value_counts(normalize=True) * 100.0
-        print("  - Brand distribution (top 10):")
+        logger.info("  - Brand distribution (top 10):")
         for brand, pct in brand_counts.head(10).items():
-            print(f"    - {brand}: {round(float(pct), 2)}%")
+            logger.info(f"    - {brand}: {round(float(pct), 2)}%")
         rare_brands = brand_counts[brand_counts < 5.0]
         if not rare_brands.empty:
             sample_rare = ", ".join([f"{b} ({round(float(p), 2)}%)" for b, p in rare_brands.head(5).items()])
@@ -289,15 +315,19 @@ def _text_profile(column: str, series: pd.Series, total: int) -> Tuple[List[Slic
     return stats, flags
 
 
+# ---------------------------------------------------------------------------
+# Column profiler dispatcher
+# ---------------------------------------------------------------------------
+
 def _profile_column(column: str, series: pd.Series, total: int) -> List[FlagItem]:
     inferred = _infer_column_type(column, series)
     missing_pct = _pct(int(_missing_mask_generic(series).sum()), total)
     flags: List[FlagItem] = []
 
-    print(f"\nColumn: {column}")
-    print(f"- inferred type: {inferred}")
-    print(f"- missing rate (%): {missing_pct}")
-    print("- representation slices:")
+    logger.info(f"\nColumn: {column}")
+    logger.info(f"- inferred type: {inferred}")
+    logger.info(f"- missing rate (%%): {missing_pct}")
+    logger.info("- representation slices:")
 
     if missing_pct > 20.0:
         flags.append(FlagItem(column, "Missingness", f"Column missingness >20% ({missing_pct}%)."))
@@ -308,14 +338,14 @@ def _profile_column(column: str, series: pd.Series, total: int) -> List[FlagItem
         numeric = pd.to_numeric(series, errors="coerce")
         labels, risk_targets = _numeric_slices(column, numeric)
         stats = _slice_counts(labels, total)
-        _print_slice_stats(stats)
+        _log_slice_stats(stats)
         for target in risk_targets:
             share = _pct(int((labels == target).sum()), total)
             if share < 5.0:
                 flags.append(FlagItem(column, target, f"Uncertainty/negative slice <5% or missing ({share}%)."))
     elif inferred == "categorical":
         stats, f = _categorical_profile(column, series, total)
-        _print_slice_stats(stats)
+        _log_slice_stats(stats)
         flags.extend(f)
     elif inferred == "boolean":
         lowered = series.astype(str).str.strip().str.lower()
@@ -325,107 +355,119 @@ def _profile_column(column: str, series: pd.Series, total: int) -> List[FlagItem
         labels[_missing_mask_generic(series)] = "Missing"
         labels[labels.isna()] = "Invalid"
         stats = _slice_counts(labels, total)
-        _print_slice_stats(stats)
+        _log_slice_stats(stats)
     elif inferred == "text":
         stats, f = _text_profile(column, series, total)
-        _print_slice_stats(stats)
+        _log_slice_stats(stats)
         flags.extend(f)
     elif inferred == "list":
         stats, f = _list_profile(column, series, total)
-        _print_slice_stats(stats)
+        _log_slice_stats(stats)
         flags.extend(f)
     elif inferred == "dict":
         stats, f = _details_profile(column, series, total)
-        _print_slice_stats(stats)
+        _log_slice_stats(stats)
         flags.extend(f)
     else:  # id
         non_missing = series[~_missing_mask_generic(series)]
         uniq_rate = _pct(int(non_missing.nunique(dropna=True)), max(len(non_missing), 1))
-        _print_slice_stats([SliceStat("Unique non-missing rate", int(non_missing.nunique(dropna=True)), uniq_rate)])
+        _log_slice_stats([SliceStat("Unique non-missing rate", int(non_missing.nunique(dropna=True)), uniq_rate)])
         if uniq_rate < 95.0:
             flags.append(FlagItem(column, "Uniqueness", f"Identifier uniqueness below 95% ({uniq_rate}%)."))
 
     if flags:
-        print("- flagged risks:")
+        logger.info("- flagged risks:")
         for f in flags:
-            print(f"  - {f.group}: {f.reason}")
+            logger.info(f"  - {f.group}: {f.reason}")
     return flags
 
 
-def _load_products(repo_root: str, preprocessed_path: Optional[str], featured_path: Optional[str]) -> pd.DataFrame:
-    pre_path = preprocessed_path or os.path.join(
-        repo_root, "data-pipeline", "dags", "data", "processed", "product_preprocessed.jsonl"
-    )
-    if not os.path.exists(pre_path):
-        raise FileNotFoundError(f"Preprocessed file not found: {pre_path}")
-    df = pd.read_json(pre_path, lines=True)
+# ---------------------------------------------------------------------------
+# Data loading
+# ---------------------------------------------------------------------------
 
-    feat_path = featured_path or os.path.join(
-        repo_root, "data-pipeline", "dags", "data", "features", "product_featured.jsonl"
-    )
-    if os.path.exists(feat_path):
-        feat = pd.read_json(feat_path, lines=True)
+def _load_products(preprocessed_path: str, featured_path: Optional[str] = None) -> pd.DataFrame:
+    if not os.path.exists(preprocessed_path):
+        raise FileNotFoundError(f"Preprocessed file not found: {preprocessed_path}")
+    df = pd.read_json(preprocessed_path, lines=True)
+    logger.info(f"Loaded {len(df)} records from {preprocessed_path}")
+
+    if featured_path and os.path.exists(featured_path):
+        feat = pd.read_json(featured_path, lines=True)
         left_key = _first_existing(df, ["product_id", "parent_asin"])
         right_key = _first_existing(feat, ["product_id", "parent_asin"])
         if left_key and right_key:
-            dedup_feat = feat.drop(columns=[c for c in feat.columns if c in df.columns and c != right_key], errors="ignore")
+            dedup_feat = feat.drop(
+                columns=[c for c in feat.columns if c in df.columns and c != right_key],
+                errors="ignore",
+            )
             df = df.merge(dedup_feat, left_on=left_key, right_on=right_key, how="left")
             if left_key != right_key and right_key in df.columns:
                 df = df.drop(columns=[right_key])
+        logger.info(f"Merged featured data from {featured_path} ({len(df.columns)} total columns)")
     return df
 
 
-def run_phase15_product_bias(
-    root_dir: Optional[str] = None,
-    preprocessed_path: Optional[str] = None,
-    featured_path: Optional[str] = None,
-) -> int:
-    repo_root = root_dir or os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../"))
-    df = _load_products(repo_root, preprocessed_path, featured_path)
+# ---------------------------------------------------------------------------
+# Main entry point
+# ---------------------------------------------------------------------------
+
+def run_product_bias(preprocessed_path: str, featured_path: Optional[str] = None) -> None:
+    """
+    Executes the product bias detection pipeline.
+    """
+    logger.info("Starting product bias detection...")
+    df = _load_products(preprocessed_path, featured_path)
     total_rows = len(df)
 
-    _print_header("1) Dataset Summary")
-    print(f"total records: {total_rows}, total columns: {len(df.columns)}")
+    logger.info(f"\n1) Dataset Summary")
+    logger.info("-" * 40)
+    logger.info(f"total records: {total_rows}, total columns: {len(df.columns)}")
     overall_missing = round(df.isna().sum().sum() / max(df.size, 1) * 100.0, 2)
-    print(f"overall missingness rate: {overall_missing}%")
+    logger.info(f"overall missingness rate: {overall_missing}%")
     missing_by_col = {c: _pct(int(_missing_mask_generic(df[c]).sum()), total_rows) for c in df.columns}
     top5 = sorted(missing_by_col.items(), key=lambda x: x[1], reverse=True)[:5]
-    print("top 5 columns by missingness:")
+    logger.info("top 5 columns by missingness:")
     for col, pct in top5:
-        print(f"- {col}: {pct}%")
+        logger.info(f"- {col}: {pct}%")
 
-    _print_header("2) Column-by-column analysis")
+    logger.info(f"\n2) Column-by-column analysis")
+    logger.info("-" * 40)
     all_flags: List[FlagItem] = []
     for column in df.columns:
         all_flags.extend(_profile_column(column, df[column], total_rows))
 
-    _print_header("3) Final Summary")
-    print("Flagged Representation Risks:")
+    logger.info(f"\n3) Final Summary")
+    logger.info("-" * 40)
+    logger.info("Flagged Representation Risks:")
     if all_flags:
         for f in all_flags:
-            print(f"- {f.column} | {f.group}: {f.reason}")
+            logger.info(f"- {f.column} | {f.group}: {f.reason}")
     else:
-        print("- None")
+        logger.info("- None")
 
-    print("\nTraining-time-only mitigation recommendations:")
+    logger.info("\nTraining-time-only mitigation recommendations:")
     if all_flags:
-        print("- Stratified sampling by (price band x rating confidence band).")
-        print("- Controlled oversampling of underrepresented slices (<5%).")
-        print("- Down-weight low-confidence products (rating_variance == 0 or rating_number < 10).")
-        print("- Stress-test evaluation on budget, low-rated, and polarized-variance products.")
+        logger.info("- Stratified sampling by (price band x rating confidence band).")
+        logger.info("- Controlled oversampling of underrepresented slices (<5%).")
+        logger.info("- Down-weight low-confidence products (rating_variance == 0 or rating_number < 10).")
+        logger.info("- Stress-test evaluation on budget, low-rated, and polarized-variance products.")
     else:
-        print("- No flagged risks; continue standard monitoring and periodic re-checks.")
-    return 0
+        logger.info("- No flagged risks; continue standard monitoring and periodic re-checks.")
 
-
-def main() -> int:
-    parser = argparse.ArgumentParser(description="Phase 15 product representation bias detector (terminal only).")
-    parser.add_argument("--root-dir", default=None, help="Repository root override.")
-    parser.add_argument("--preprocessed-path", default=None, help="Path override for product_preprocessed.jsonl.")
-    parser.add_argument("--featured-path", default=None, help="Path override for product_featured.jsonl.")
-    args = parser.parse_args()
-    return run_phase15_product_bias(args.root_dir, args.preprocessed_path, args.featured_path)
+    logger.info("Product bias detection complete.")
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    logging.basicConfig(
+        level=logging.INFO,
+        format="[%(asctime)s] [%(levelname)s] [%(name)s] %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+    # Default local run paths.
+    BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    DATA_DIR = os.path.join(BASE_DIR, "data")
+    run_product_bias(
+        preprocessed_path=os.path.join(DATA_DIR, "processed/product_preprocessed.jsonl"),
+        featured_path=os.path.join(DATA_DIR, "features/product_featured.jsonl"),
+    )
