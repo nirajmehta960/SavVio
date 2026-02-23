@@ -206,22 +206,6 @@ def load_reviews(engine, jsonl_path: str, truncate: bool = True) -> int:
     if "helpful_vote" in df.columns:
         df["helpful_vote"] = df["helpful_vote"].fillna(0).astype(int)
 
-    # Filter out reviews whose product_id doesn't exist in the products table
-    # to avoid ForeignKeyViolation errors
-    with engine.connect() as conn:
-        existing_ids = pd.read_sql(
-            text("SELECT product_id FROM products"), conn
-        )["product_id"].tolist()
-    existing_ids_set = set(existing_ids)
-    before_count = len(df)
-    df = df[df["product_id"].isin(existing_ids_set)]
-    dropped = before_count - len(df)
-    if dropped:
-        logger.warning(
-            "Dropped %d orphaned reviews (product_id not in products table)",
-            dropped,
-        )
-
     if truncate:
         _truncate_table(engine, "reviews")
 
