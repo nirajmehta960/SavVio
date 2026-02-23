@@ -489,15 +489,10 @@ def run_review_bias(preprocessed_path: str, featured_path: Optional[str] = None)
 
 
 if __name__ == "__main__":
-    logging.basicConfig(
-        level=logging.INFO,
-        format="[%(asctime)s] [%(levelname)s] [%(name)s] %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    )
-    # Default local run paths.
-    BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    DATA_DIR = os.path.join(BASE_DIR, "data")
+    from utils import setup_logging, get_processed_path, get_features_path
+
+    setup_logging()
     run_review_bias(
-        preprocessed_path=os.path.join(DATA_DIR, "processed/review_preprocessed.jsonl"),
-        featured_path=os.path.join(DATA_DIR, "features/review_featured.jsonl"),
+        preprocessed_path=get_processed_path("review_preprocessed.jsonl"),
+        featured_path=get_features_path("review_featured.jsonl"),
     )

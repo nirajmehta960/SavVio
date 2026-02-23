@@ -9,7 +9,6 @@ Input: data/processed/financial_preprocessed.csv
 Output: Terminal-only log output (no files written)
 """
 
-import argparse
 import logging
 import math
 import os
@@ -104,9 +103,10 @@ def _infer_type(name: str, series: pd.Series) -> str:
     if pd.api.types.is_bool_dtype(series) or lowered.isin(BOOL_TRUE | BOOL_FALSE).all():
         return "boolean"
 
-    dt_try = pd.to_datetime(non_missing, errors="coerce")
-    if dt_try.notna().mean() > 0.95 and ("date" in norm_name or "time" in norm_name):
-        return "datetime"
+    if "date" in norm_name or "time" in norm_name:
+        dt_try = pd.to_datetime(non_missing, errors="coerce")
+        if dt_try.notna().mean() > 0.95:
+            return "datetime"
 
     numeric_try = _as_numeric(non_missing)
     if pd.api.types.is_numeric_dtype(series) or numeric_try.notna().mean() >= 0.95:
@@ -600,15 +600,10 @@ def run_financial_bias(processed_path: str, featured_path: Optional[str] = None)
 
 
 if __name__ == "__main__":
-    logging.basicConfig(
-        level=logging.INFO,
-        format="[%(asctime)s] [%(levelname)s] [%(name)s] %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    )
-    # Default local run paths.
-    BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    DATA_DIR = os.path.join(BASE_DIR, "data")
+    from utils import setup_logging, get_processed_path, get_features_path
+
+    setup_logging()
     run_financial_bias(
-        processed_path=os.path.join(DATA_DIR, "processed/financial_preprocessed.csv"),
-        featured_path=os.path.join(DATA_DIR, "features/financial_featured.csv"),
+        processed_path=get_processed_path("financial_preprocessed.csv"),
+        featured_path=get_features_path("financial_featured.csv"),
     )
