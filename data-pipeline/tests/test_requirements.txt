@@ -1,0 +1,6 @@
+pytest
+sentence-transformers
+pandas 
+numpy 
+sqlalchemy 
+psycopg2-binary
