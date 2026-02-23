@@ -3,11 +3,8 @@ import os
 import sys
 from sqlalchemy import create_engine, inspect
 
-# --- Magic trick: Add data-pipeline to Python path ---
-# This allows Python to locate the dags folder when running tests from tests/database/
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
 
-# Now we can safely import from dags.src
 from dags.src.database.db_schema import (  # noqa: E402
     Base,
     FinancialProfile,
@@ -38,7 +35,6 @@ def inspector(engine):
 # =============================================================================
 
 def test_create_tables_success(inspector):
-    """Scenario 1: create_tables should create all expected tables"""
     tables = set(inspector.get_table_names())
     assert "financial_profiles" in tables
     assert "products" in tables
@@ -50,28 +46,16 @@ def test_create_tables_success(inspector):
 # =============================================================================
 
 def test_products_table_has_expected_columns(inspector):
-    """Scenario 2: products table should include all required columns"""
     cols = {c["name"]: c for c in inspector.get_columns("products")}
-
     expected = {
-        "id",
-        "product_id",
-        "product_name",
-        "price",
-        "average_rating",
-        "rating_number",
-        "description",
-        "features",
-        "details",
-        "category",
-        "created_at",
+        "id", "product_id", "product_name", "price",
+        "average_rating", "rating_number", "description",
+        "features", "details", "category", "created_at",
     }
     assert expected.issubset(set(cols.keys()))
 
 def test_products_table_not_null_constraints(inspector):
-    """Scenario 3: products key columns should be NOT NULL"""
     cols = {c["name"]: c for c in inspector.get_columns("products")}
-
     assert cols["product_id"]["nullable"] is False
     assert cols["product_name"]["nullable"] is False
     assert cols["price"]["nullable"] is False
@@ -82,9 +66,7 @@ def test_products_table_not_null_constraints(inspector):
 # =============================================================================
 
 def test_financial_profiles_table_has_expected_columns(inspector):
-    """Scenario 4: financial_profiles should include all required columns"""
     cols = {c["name"]: c for c in inspector.get_columns("financial_profiles")}
-
     expected = {
         "id",
         "user_id",
@@ -101,17 +83,15 @@ def test_financial_profiles_table_has_expected_columns(inspector):
         "region",
         "discretionary_income",
         "debt_to_income_ratio",
-        "savings_rate",
-        "expense_burden_ratio",
+        "saving_to_income_ratio",       # 修正：原本是 savings_rate
+        "monthly_expense_burden_ratio", # 修正：原本是 expense_burden_ratio
         "emergency_fund_months",
         "created_at",
     }
     assert expected.issubset(set(cols.keys()))
 
 def test_financial_profiles_not_null_constraints(inspector):
-    """Scenario 5: financial_profiles required columns should be NOT NULL"""
     cols = {c["name"]: c for c in inspector.get_columns("financial_profiles")}
-
     assert cols["user_id"]["nullable"] is False
     assert cols["monthly_income"]["nullable"] is False
     assert cols["monthly_expenses"]["nullable"] is False
@@ -122,33 +102,21 @@ def test_financial_profiles_not_null_constraints(inspector):
 # =============================================================================
 
 def test_reviews_table_has_expected_columns(inspector):
-    """Scenario 6: reviews should include all required columns"""
     cols = {c["name"]: c for c in inspector.get_columns("reviews")}
-
     expected = {
-        "id",
-        "user_id",
-        "asin",
-        "product_id",
-        "rating",
-        "review_title",
-        "review_text",
-        "verified_purchase",
-        "helpful_vote",
-        "created_at",
+        "id", "user_id", "asin", "product_id", "rating",
+        "review_title", "review_text", "verified_purchase",
+        "helpful_vote", "created_at",
     }
     assert expected.issubset(set(cols.keys()))
 
 def test_reviews_rating_not_null(inspector):
-    """Scenario 7: rating should be NOT NULL"""
     cols = {c["name"]: c for c in inspector.get_columns("reviews")}
     assert cols["rating"]["nullable"] is False
 
 def test_reviews_foreign_key_to_products(inspector):
-    """Scenario 8: reviews.product_id should FK to products.product_id"""
     fks = inspector.get_foreign_keys("reviews")
     assert len(fks) >= 1
-
     matches = [
         fk for fk in fks
         if fk.get("referred_table") == "products"
@@ -163,10 +131,8 @@ def test_reviews_foreign_key_to_products(inspector):
 # =============================================================================
 
 def test_model_tablenames_and_metadata():
-    """Scenario 9: SQLAlchemy models should map to correct table names"""
     assert FinancialProfile.__tablename__ == "financial_profiles"
     assert Product.__tablename__ == "products"
     assert Review.__tablename__ == "reviews"
-
     table_names = set(Base.metadata.tables.keys())
     assert {"financial_profiles", "products", "reviews"}.issubset(table_names)

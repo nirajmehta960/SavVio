@@ -141,11 +141,11 @@ def _gdf(**cols):
 
 def _fin_gdf(**overrides):
     base = {
-        "discretionary_income":  [2500.0] * 5,
-        "debt_to_income_ratio":  [0.1]   * 5,
-        "savings_rate":          [0.2]   * 5,
-        "expense_burden_ratio":  [0.5]   * 5,
-        "emergency_fund_months": [6.0]   * 5,
+        "discretionary_income":         [2500.0] * 5,
+        "debt_to_income_ratio":          [0.1]   * 5,
+        "saving_to_income_ratio":        [0.2]   * 5,
+        "monthly_expense_burden_ratio":  [0.5]   * 5,
+        "emergency_fund_months":         [6.0]   * 5,
     }
     base.update(overrides)
     return _FakePandasDataset(pd.DataFrame(base))

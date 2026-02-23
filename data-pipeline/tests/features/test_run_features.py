@@ -28,11 +28,10 @@ for _name, _attrs in {
     "financial_features": {"run_financial_features": MagicMock()},
     "product_review_features": {"run_review_features": MagicMock()},
 }.items():
-    if _name not in sys.modules:
-        m = types.ModuleType(_name)
-        for k, v in _attrs.items():
-            setattr(m, k, v)
-        sys.modules[_name] = m
+    m = types.ModuleType(_name)
+    for k, v in _attrs.items():
+        setattr(m, k, v)
+    sys.modules[_name] = m  # 強制覆蓋，不用 if not in
 
 # ---------------------------------------------------------------------------
 # Load module under test

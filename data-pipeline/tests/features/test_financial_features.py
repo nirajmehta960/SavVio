@@ -142,26 +142,25 @@ def test_monthly_expense_burden_ratio_zero_income():
     assert np.isnan(out.loc[0, "monthly_expense_burden_ratio"])
 
 
-def test_financial_runway_basic():
+def test_emergency_fund_months_basic():
     """savings / (expenses + emi) = 30000 / 2500 = 12.0"""
     df = _base_df()
     out = M.calculate_ratios(df)
-    assert out.loc[0, "financial_runway"] == pytest.approx(12.0)
+    assert out.loc[0, "emergency_fund_months"] == pytest.approx(12.0)
 
 
-def test_financial_runway_zero_expenses():
-    """Zero expenses + emi → runway is NaN (no outflows to divide by)."""
+def test_emergency_fund_months_zero_expenses():
+    """Zero expenses + emi → emergency_fund_months is NaN."""
     df = _base_df(monthly_expenses=0.0, monthly_emi=0.0)
     out = M.calculate_ratios(df)
-    assert np.isnan(out.loc[0, "financial_runway"])
+    assert np.isnan(out.loc[0, "emergency_fund_months"])
 
 
 def test_calculate_ratios_all_columns_present():
-    """All four ratio columns must be created."""
     df = _base_df()
     out = M.calculate_ratios(df)
     for col in ["debt_to_income_ratio", "saving_to_income_ratio",
-                "monthly_expense_burden_ratio", "financial_runway"]:
+                "monthly_expense_burden_ratio", "emergency_fund_months"]:
         assert col in out.columns
 
 
@@ -205,7 +204,7 @@ def test_run_financial_features_creates_output(tmp_path):
     assert out.exists()
     df_out = pd.read_csv(out)
     for col in ["discretionary_income", "debt_to_income_ratio",
-                "saving_to_income_ratio", "monthly_expense_burden_ratio", "financial_runway"]:
+                "saving_to_income_ratio", "monthly_expense_burden_ratio", "emergency_fund_months"]:
         assert col in df_out.columns
 
 
@@ -227,7 +226,7 @@ def test_run_financial_features_inf_replaced(tmp_path):
     df_out = pd.read_csv(out)
 
     ratio_cols = ["debt_to_income_ratio", "saving_to_income_ratio",
-                  "monthly_expense_burden_ratio", "financial_runway"]
+                  "monthly_expense_burden_ratio", "emergency_fund_months"]
     for col in ratio_cols:
         val = df_out.loc[0, col]
         assert not np.isinf(val) if not pd.isna(val) else True

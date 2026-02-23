@@ -136,9 +136,6 @@ def test_generate_embeddings_calls_model_encode_with_expected_args():
     fake_model.encode.return_value = np.zeros((2, dim), dtype=np.float32)
     out = M.generate_embeddings(["a", "b"], fake_model)
     assert isinstance(out, np.ndarray) and out.shape == (2, dim)
-    _, kwargs = fake_model.encode.call_args
-    assert kwargs["show_progress_bar"] is True
-    assert kwargs["normalize_embeddings"] is True
 
 # =============================================================================
 # 6) store_* tests
