@@ -215,9 +215,9 @@ class GCSLoader:
             # Chunked reading — reduces peak memory ~3-4x for large files (e.g. 929 MB review data)
             file_size_mb = os.path.getsize(local_path) / (1024 * 1024)
             logger.info(f"File size: {file_size_mb:.1f} MB")
-            if file_size_mb > 100: # To handle large files - Adjust as needed - default 100MB
-                logger.info(f"Large file detected — reading in chunks of 50,000 rows") # Default chunk size 50_000 rows - 20 to 30 MB per chunk
-                chunks = pd.read_json(local_path, lines=True, chunksize=50_000)
+            if file_size_mb > 300: # To handle large files - Adjust as needed - default 300MB
+                logger.info(f"Large file detected — reading in chunks of 100,000 rows") # Default chunk size 100_000 rows - 20 to 30 MB per chunk
+                chunks = pd.read_json(local_path, lines=True, chunksize=100_000)
                 df = pd.concat(chunks, ignore_index=True)
             else:
                 df = pd.read_json(local_path, lines=True)
