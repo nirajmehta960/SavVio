@@ -3,14 +3,7 @@
 # -----------------------------------------------------------------------------
 pandas>=2.1.4
 numpy>=1.26.2
-scikit-learn 
-flask # maybe remove after testing
-scipy 
 
-# Vector Embeddings
-sentence-transformers
-psycopg2-binary
-sqlalchemy
 # -----------------------------------------------------------------------------
 # Google Cloud Platform
 # -----------------------------------------------------------------------------
@@ -26,12 +19,7 @@ kagglehub>=0.1.0
 python-dotenv>=1.0.0
 pyyaml>=6.0.1
 
-# Latest Airflow version
-# apache-airflow>=3.1.7
-
-# For slack notifications 
-apache-airflow-providers-slack
-
+apache-airflow>=3.1.7
 # Airflow GCP provider for GCS integration
 apache-airflow-providers-google>=3.1.7
 
@@ -44,7 +32,7 @@ dvc-gs>=3.0.1  # GCS remote storage support for DVC
 # -----------------------------------------------------------------------------
 # Data Validation & Quality
 # -----------------------------------------------------------------------------
-great-expectations>=0.18.8,<1.0.0
+great-expectations>=0.18.8
 jsonschema>=4.20.0
 
 # -----------------------------------------------------------------------------

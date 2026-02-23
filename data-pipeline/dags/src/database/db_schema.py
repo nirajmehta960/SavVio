@@ -35,8 +35,8 @@ class FinancialProfile(Base):
     # --- feature-engineered columns (optional, loaded if present) ---
     discretionary_income  = Column(Float)
     debt_to_income_ratio  = Column(Float)
-    saving_to_income_ratio       = Column(Float)
-    monthly_expense_burden_ratio = Column(Float)
+    savings_rate          = Column(Float)
+    expense_burden_ratio  = Column(Float)
     emergency_fund_months = Column(Float)
     created_at            = Column(DateTime, server_default=func.now())
 
@@ -50,15 +50,14 @@ class Product(Base):
 
     id              = Column(Integer, primary_key=True, autoincrement=True)
     product_id      = Column(String(100), unique=True, nullable=False)  # parent_asin
-    product_name    = Column(Text, nullable=False)
+    product_name    = Column(String(500), nullable=False)
     price           = Column(Float, nullable=False)
     average_rating  = Column(Float)
     rating_number   = Column(Integer)
-    rating_variance = Column(Float)
     description     = Column(Text)
     features        = Column(Text)
     details         = Column(JSON)        # stored as JSONB in PostgreSQL
-    category        = Column(Text)
+    category        = Column(String(200))
     created_at      = Column(DateTime, server_default=func.now())
 
 
@@ -85,10 +84,6 @@ class Review(Base):
 # Helper to create all tables
 # ---------------------------------------------------------------------------
 
-def drop_tables(engine):
-    """Drop all tables that exist in the database."""
-    Base.metadata.drop_all(engine)
-
 def create_tables(engine):
     """Create all tables that don't already exist."""
-    Base.metadata.create_all(engine, checkfirst=True)
+    Base.metadata.create_all(engine)

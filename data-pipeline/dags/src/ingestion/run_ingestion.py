@@ -13,7 +13,7 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from ingestion.config import (
+from config import (
     ENVIRONMENT,
     DATA_SOURCE,
     GCS_BUCKET_NAME,

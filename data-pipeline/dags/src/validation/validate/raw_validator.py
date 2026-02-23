@@ -53,13 +53,7 @@ def _load_csv(path: str) -> PandasDataset:
 
 
 def _load_jsonl(path: str) -> PandasDataset:
-    # df = pd.read_json(path, lines=True)
-    file_size_mb = os.path.getsize(path) / (1024 * 1024)
-    if file_size_mb > 100:
-        chunks = pd.read_json(path, lines=True, chunksize=50_000)
-        df = pd.concat(chunks, ignore_index=True)
-    else:
-        df = pd.read_json(path, lines=True)
+    df = pd.read_json(path, lines=True)
     return gx.from_pandas(df)
 
 
@@ -434,18 +428,8 @@ def validate_cross_references(products_path: str, reviews_path: str) -> list[Che
     """Check that review ASINs reference existing product ASINs."""
     results: list[CheckResult] = []
 
-    # products_df = pd.read_json(products_path, lines=True)
-    # reviews_df = pd.read_json(reviews_path, lines=True)
-    prod_size_mb = os.path.getsize(products_path) / (1024 * 1024)
-    if prod_size_mb > 100:
-        products_df = pd.concat(pd.read_json(products_path, lines=True, chunksize=50_000), ignore_index=True)
-    else:
-        products_df = pd.read_json(products_path, lines=True)
-    rev_size_mb = os.path.getsize(reviews_path) / (1024 * 1024)
-    if rev_size_mb > 100:
-        reviews_df = pd.concat(pd.read_json(reviews_path, lines=True, chunksize=50_000), ignore_index=True)
-    else:
-        reviews_df = pd.read_json(reviews_path, lines=True)
+    products_df = pd.read_json(products_path, lines=True)
+    reviews_df = pd.read_json(reviews_path, lines=True)
 
     # Determine which ASIN column reviews use to reference products
     review_asin_col = "parent_asin" if "parent_asin" in reviews_df.columns else "asin"

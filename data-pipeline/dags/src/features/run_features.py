@@ -3,7 +3,8 @@ Feature Engineering Orchestrator.
 
 Runs the complete feature engineering pipeline:
 1. Financial Feature Engineering
-2. Review Feature Engineering (produces product_featured.jsonl + review_featured.jsonl)
+2. Review Feature Engineering
+3. Affordability Feature Engineering
 
 Usage:
     python3 src/features/run_features.py
@@ -18,7 +19,7 @@ import argparse
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 
 from financial_features import run_financial_features
-from product_review_features import run_review_features
+from review_features import run_review_features
 from utils import setup_logging
 
 # Configure module logging.
@@ -29,6 +30,7 @@ def main():
     parser = argparse.ArgumentParser(description="Run Feature Engineering Pipeline")
     parser.add_argument("--skip-financial", action="store_true", help="Skip financial features")
     parser.add_argument("--skip-reviews", action="store_true", help="Skip review features")
+    parser.add_argument("--skip-affordability", action="store_true", help="Skip affordability features")
     args = parser.parse_args()
 
     # Resolve data paths (data is at dags/data).
@@ -39,11 +41,14 @@ def main():
     FIN_INPUT = os.path.join(DATA_DIR, "processed/financial_preprocessed.csv")
     FIN_OUTPUT = os.path.join(DATA_DIR, "features/financial_featured.csv")
     
-    # Review & product input/output files.
+    # Review and product input/output files.
     REV_INPUT = os.path.join(DATA_DIR, "processed/review_preprocessed.jsonl")
+    REV_OUTPUT = os.path.join(DATA_DIR, "features/reviews_featured.jsonl")
+    
     PROD_INPUT = os.path.join(DATA_DIR, "processed/product_preprocessed.jsonl")
-    PROD_OUTPUT = os.path.join(DATA_DIR, "features/product_featured.jsonl")
-    REV_OUTPUT = os.path.join(DATA_DIR, "features/review_featured.jsonl")
+    
+    # Consolidated affordability output.
+    AFF_OUTPUT = os.path.join(DATA_DIR, "features/features.csv")
 
     # Step 1: Financial features.
     if not args.skip_financial:
@@ -54,16 +59,11 @@ def main():
         except Exception as e:
             logger.error(f"Financial feature engineering failed: {e}")
 
-    # Step 2: Review features (produces product_featured.jsonl + review_featured.jsonl).
+    # Step 2: Review features.
     if not args.skip_reviews:
         logger.info("--- Starting Review Feature Engineering ---")
         try:
-            run_review_features(
-                reviews_path=REV_INPUT,
-                products_path=PROD_INPUT,
-                product_output_path=PROD_OUTPUT,
-                review_output_path=REV_OUTPUT,
-            )
+            run_review_features(REV_INPUT, REV_OUTPUT)
             logger.info("Review features complete.")
         except Exception as e:
             logger.error(f"Review feature engineering failed: {e}")
@@ -86,15 +86,13 @@ def feature_financial_task(**context):
 
 
 def feature_review_task(**context):
-    """Airflow task: run review feature engineering (produces product + review featured files)."""
+    """Airflow task: run review feature engineering."""
     logger.info(">>> Running Review Feature Engineering...")
     BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     DATA_DIR = os.path.join(BASE_DIR, "data")
     run_review_features(
         reviews_path=os.path.join(DATA_DIR, "processed/review_preprocessed.jsonl"),
-        products_path=os.path.join(DATA_DIR, "processed/product_preprocessed.jsonl"),
-        product_output_path=os.path.join(DATA_DIR, "features/product_featured.jsonl"),
-        review_output_path=os.path.join(DATA_DIR, "features/review_featured.jsonl"),
+        output_path=os.path.join(DATA_DIR, "features/product_rating_variance.csv"),
     )
     logger.info(">>> Review Feature Engineering: SUCCESS")
 
