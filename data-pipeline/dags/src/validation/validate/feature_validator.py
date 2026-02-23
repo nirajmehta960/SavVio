@@ -372,7 +372,7 @@ def validate_formula_spot_checks(gdf: PandasDataset) -> list[CheckResult]:
 
 def run_feature_validation(
     financial_path: str = "data/features/financial_featured.csv",
-    reviews_path: str = "data/features/product_featured.jsonl",
+    reviews_path: str = "data/features/product_rating_variance.csv",
     threshold_config: Optional[str] = "config/validation_thresholds.json",
 ) -> ValidationReport:
     """Run all feature validations."""
@@ -455,7 +455,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Validate SavVio features")
     parser.add_argument("--financial-features", default="data/features/financial_featured.csv")
-    parser.add_argument("--review-features", default="data/features/product_featured.jsonl")
+    parser.add_argument("--review-features", default="data/features/product_rating_variance.csv")
     parser.add_argument("--thresholds", default=None)
     args = parser.parse_args()
 
