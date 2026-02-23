@@ -93,8 +93,8 @@ def _read_jsonl(path: str) -> pd.DataFrame:
     """Read a JSONL file (one JSON object per line)."""
     # df = pd.read_json(path, lines=True)
     file_size_mb = os.path.getsize(path) / (1024 * 1024)
-    if file_size_mb > 100:
-        chunks = pd.read_json(path, lines=True, chunksize=50_000)
+    if file_size_mb > 300:
+        chunks = pd.read_json(path, lines=True, chunksize=100_000)
         df = pd.concat(chunks, ignore_index=True)
     else:
         df = pd.read_json(path, lines=True)

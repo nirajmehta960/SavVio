@@ -290,8 +290,8 @@ def _read_file(path: str) -> pd.DataFrame:
     if path.endswith(".jsonl"):
         # return pd.read_json(path, lines=True)
         file_size_mb = os.path.getsize(path) / (1024 * 1024)
-        if file_size_mb > 100:
-            return pd.concat(pd.read_json(path, lines=True, chunksize=50_000), ignore_index=True)
+        if file_size_mb > 300:
+            return pd.concat(pd.read_json(path, lines=True, chunksize=100_000), ignore_index=True)
         return pd.read_json(path, lines=True)
     return pd.read_csv(path)
 

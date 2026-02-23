@@ -546,10 +546,28 @@ check_db_loading >> email_pipeline_success
 # ═══════════════════════════════════════════════════════════════════
 def _check_pipeline_complete(**context):
     """Fail the DAG run if the success email was not sent (i.e. pipeline didn't fully complete)."""
+    import logging
+    from airflow.sdk.execution_time.task_runner import RuntimeTaskInstance
+    
+    logger = logging.getLogger(__name__)
     dag_run = context['dag_run']
-    success_ti = dag_run.get_task_instance('send_email_pipeline_success')
-    if success_ti is None or success_ti.state != 'success':
-        state = success_ti.state if success_ti else 'missing'
+    
+    try:
+        # Airflow 3 SDK uses get_task_states instead of context['dag_run'].get_task_instance
+        all_states = RuntimeTaskInstance.get_task_states(
+            dag_id=dag_run.dag_id,
+            run_ids=[dag_run.run_id],
+            task_ids=['send_email_pipeline_success'],
+        )
+        states = all_states.get(dag_run.run_id, {})
+    except Exception as e:
+        logger.error("get_task_states failed: %s", e, exc_info=True)
+        raise AirflowException(f"Failed to query task states: {e}")
+        
+    state = str(states.get('send_email_pipeline_success', 'missing'))
+    
+    # Handle string 'success' or TaskInstanceState enum strings
+    if state not in ('success', 'TaskInstanceState.SUCCESS') and 'success' not in state.lower():
         raise AirflowException(
             f"Pipeline did not complete successfully — "
             f"'send_email_pipeline_success' state is '{state}'"
