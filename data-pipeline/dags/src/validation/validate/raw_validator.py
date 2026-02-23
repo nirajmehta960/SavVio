@@ -55,8 +55,8 @@ def _load_csv(path: str) -> PandasDataset:
 def _load_jsonl(path: str) -> PandasDataset:
     # df = pd.read_json(path, lines=True)
     file_size_mb = os.path.getsize(path) / (1024 * 1024)
-    if file_size_mb > 100:
-        chunks = pd.read_json(path, lines=True, chunksize=50_000)
+    if file_size_mb > 300:
+        chunks = pd.read_json(path, lines=True, chunksize=100_000)
         df = pd.concat(chunks, ignore_index=True)
     else:
         df = pd.read_json(path, lines=True)
@@ -437,13 +437,13 @@ def validate_cross_references(products_path: str, reviews_path: str) -> list[Che
     # products_df = pd.read_json(products_path, lines=True)
     # reviews_df = pd.read_json(reviews_path, lines=True)
     prod_size_mb = os.path.getsize(products_path) / (1024 * 1024)
-    if prod_size_mb > 100:
-        products_df = pd.concat(pd.read_json(products_path, lines=True, chunksize=50_000), ignore_index=True)
+    if prod_size_mb > 300:
+        products_df = pd.concat(pd.read_json(products_path, lines=True, chunksize=100_000), ignore_index=True)
     else:
         products_df = pd.read_json(products_path, lines=True)
     rev_size_mb = os.path.getsize(reviews_path) / (1024 * 1024)
-    if rev_size_mb > 100:
-        reviews_df = pd.concat(pd.read_json(reviews_path, lines=True, chunksize=50_000), ignore_index=True)
+    if rev_size_mb > 300:
+        reviews_df = pd.concat(pd.read_json(reviews_path, lines=True, chunksize=100_000), ignore_index=True)
     else:
         reviews_df = pd.read_json(reviews_path, lines=True)
 

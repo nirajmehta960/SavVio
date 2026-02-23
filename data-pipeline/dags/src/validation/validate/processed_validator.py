@@ -51,8 +51,8 @@ def _load(path: str) -> PandasDataset:
     if path.endswith(".jsonl"):
         # return gx.from_pandas(pd.read_json(path, lines=True))
         file_size_mb = os.path.getsize(path) / (1024 * 1024)
-        if file_size_mb > 100:
-            df = pd.concat(pd.read_json(path, lines=True, chunksize=50_000), ignore_index=True)
+        if file_size_mb > 300:
+            df = pd.concat(pd.read_json(path, lines=True, chunksize=100_000), ignore_index=True)
         else:
             df = pd.read_json(path, lines=True)
         return gx.from_pandas(df)
@@ -271,8 +271,8 @@ def validate_products_processed(path: str, raw_path: str,
     try:
         # raw_df = pd.read_json(raw_path, lines=True)
         raw_size_mb = os.path.getsize(raw_path) / (1024 * 1024)
-        if raw_size_mb > 100:
-            raw_df = pd.concat(pd.read_json(raw_path, lines=True, chunksize=50_000), ignore_index=True)
+        if raw_size_mb > 300:
+            raw_df = pd.concat(pd.read_json(raw_path, lines=True, chunksize=100_000), ignore_index=True)
         else:
             raw_df = pd.read_json(raw_path, lines=True)
         raw_count = len(raw_df)
@@ -388,8 +388,8 @@ def validate_reviews_processed(path: str, raw_path: str,
     try:
         # raw_df = pd.read_json(raw_path, lines=True)
         raw_size_mb = os.path.getsize(raw_path) / (1024 * 1024)
-        if raw_size_mb > 100:
-            raw_df = pd.concat(pd.read_json(raw_path, lines=True, chunksize=50_000), ignore_index=True)
+        if raw_size_mb > 300:
+            raw_df = pd.concat(pd.read_json(raw_path, lines=True, chunksize=100_000), ignore_index=True)
         else:
             raw_df = pd.read_json(raw_path, lines=True)
         raw_count = len(raw_df)

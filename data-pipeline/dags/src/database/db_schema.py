@@ -5,7 +5,7 @@ Matches the actual columns from preprocessing (see Data Pipeline Plan).
 
 from sqlalchemy import (
     Column, Integer, Float, String, Boolean, Text, DateTime, ForeignKey,
-    func, JSON
+    func, JSON, text
 )
 from sqlalchemy.orm import declarative_base
 
@@ -87,6 +87,12 @@ class Review(Base):
 
 def drop_tables(engine):
     """Drop all tables that exist in the database."""
+    # Embedding tables are created via raw SQL in vector_embed.py, so SQLAlchemy's drop_all
+    # doesn't know about them. We must drop them manually first to clear foreign key constraints.
+    with engine.begin() as conn:
+        conn.execute(text("DROP TABLE IF EXISTS review_embeddings CASCADE;"))
+        conn.execute(text("DROP TABLE IF EXISTS product_embeddings CASCADE;"))
+        
     Base.metadata.drop_all(engine)
 
 def create_tables(engine):

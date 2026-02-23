@@ -93,8 +93,8 @@ def _read_jsonl(path: str) -> pd.DataFrame:
     """Read a JSONL file (one JSON object per line)."""
     # df = pd.read_json(path, lines=True)
     file_size_mb = os.path.getsize(path) / (1024 * 1024)
-    if file_size_mb > 100:
-        chunks = pd.read_json(path, lines=True, chunksize=50_000)
+    if file_size_mb > 300:
+        chunks = pd.read_json(path, lines=True, chunksize=100_000)
         df = pd.concat(chunks, ignore_index=True)
     else:
         df = pd.read_json(path, lines=True)
@@ -205,22 +205,6 @@ def load_reviews(engine, jsonl_path: str, truncate: bool = True) -> int:
         df["verified_purchase"] = df["verified_purchase"].astype(bool)
     if "helpful_vote" in df.columns:
         df["helpful_vote"] = df["helpful_vote"].fillna(0).astype(int)
-
-    # Filter out reviews whose product_id doesn't exist in the products table
-    # to avoid ForeignKeyViolation errors
-    with engine.connect() as conn:
-        existing_ids = pd.read_sql(
-            text("SELECT product_id FROM products"), conn
-        )["product_id"].tolist()
-    existing_ids_set = set(existing_ids)
-    before_count = len(df)
-    df = df[df["product_id"].isin(existing_ids_set)]
-    dropped = before_count - len(df)
-    if dropped:
-        logger.warning(
-            "Dropped %d orphaned reviews (product_id not in products table)",
-            dropped,
-        )
 
     if truncate:
         _truncate_table(engine, "reviews")
