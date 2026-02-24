@@ -1204,7 +1204,7 @@ This section describes the **slices used**, **bias found**, and **mitigation str
 | Debt-to-income (DTI) | Safe (&lt;0.2), Warning (0.2–0.4), Risky (&gt;0.4) | Warning &lt;10% |
 | Savings-to-income | Fragile (&lt;0.25), Moderate (0.25–1.0), Strong (&gt;1.0) | Fragile &lt;10% |
 | Monthly expense burden | Comfortable (&lt;0.5), Tight (0.5–0.8), Overstretched (&gt;0.8) | — |
-| Emergency fund months | Critical (&lt;1), Fragile (1–3), Stable (&gt;3) | — |
+| Emergency fund months | Quantile bands (Q1–Q4) + outliers | — |
 | Income / expenses / loan amount / interest / term / credit score | Low, Medium, High (quantiles or domain bins) | High-risk band &lt;10% |
 | Employment status | Employed, Self-employed, Unemployed, Student | Category &lt;10% |
 | Region | Geographic categories | — |
