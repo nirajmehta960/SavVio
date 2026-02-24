@@ -1,66 +1,55 @@
-# tests/database/test_vector_embed.py
+"""
+Tests for Load to Database — upload_to_db.py.
+
+Covers the module that loads feature-engineered data (CSV/JSONL) into
+PostgreSQL tables: financial_profiles, products, reviews.
+Includes helper functions (_read_csv, _read_jsonl, _select_and_rename,
+_ensure_jsonb, _truncate_table) and the three loaders + load_all orchestrator.
+"""
+import json
 import os
 import sys
-import json
 import types
 import importlib.util
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, patch, call
 
 import numpy as np
 import pandas as pd
 import pytest
 
+# ---------------------------------------------------------------------------
+# Path constants  (sys.path set up by conftest.py)
+# ---------------------------------------------------------------------------
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
-sys.path.insert(0, PROJECT_ROOT)
-
 DAGS_SRC_DB = os.path.join(PROJECT_ROOT, "dags", "src", "database")
-DAGS_SRC    = os.path.join(PROJECT_ROOT, "dags", "src")
-for _p in (DAGS_SRC_DB, DAGS_SRC):
-    if os.path.isdir(_p) and _p not in sys.path:
-        sys.path.insert(0, _p)
 
-if "db_config" not in sys.modules:
-    _db = types.ModuleType("db_config")
-    _db.get_engine = lambda env="dev": MagicMock(name=f"engine_{env}")
-    _db.ensure_pgvector = lambda engine: None
-    sys.modules["db_config"] = _db
+# ---------------------------------------------------------------------------
+# Stub heavy dependencies before loading the module
+# ---------------------------------------------------------------------------
+if "src.database.db_connection" not in sys.modules:
+    _stub = types.ModuleType("src.database.db_connection")
+    _stub.get_engine = MagicMock(name="get_engine")
+    sys.modules["src.database.db_connection"] = _stub
+    # ensure parent packages exist
+    for _p in ("src", "src.database"):
+        if _p not in sys.modules:
+            sys.modules[_p] = types.ModuleType(_p)
 
-if "models" not in sys.modules:
-    _mo = types.ModuleType("models")
-    _mo.create_tables = lambda engine: None
-    sys.modules["models"] = _mo
+if "src.database.db_schema" not in sys.modules:
+    _stub2 = types.ModuleType("src.database.db_schema")
+    _stub2.create_tables = MagicMock(name="create_tables")
+    sys.modules["src.database.db_schema"] = _stub2
 
-if "sentence_transformers" not in sys.modules:
-    _st = types.ModuleType("sentence_transformers")
-    class _FakeST:
-        def __init__(self, *a, **kw): pass
-        def encode(self, sentences, **kw):
-            return np.zeros((len(sentences), 384), dtype=np.float32)
-    _st.SentenceTransformer = _FakeST
-    sys.modules["sentence_transformers"] = _st
-
-for _mod in ("sqlalchemy", "sqlalchemy.orm", "sqlalchemy.engine",
-             "sqlalchemy.dialects", "sqlalchemy.dialects.postgresql"):
-    if _mod not in sys.modules:
-        _s = types.ModuleType(_mod)
-        _s.text = lambda s: s
-        _s.Column = MagicMock()
-        _s.String = MagicMock()
-        _s.Integer = MagicMock()
-        _s.Float = MagicMock()
-        sys.modules[_mod] = _s
-
-for _mod in ("pgvector", "pgvector.sqlalchemy"):
-    if _mod not in sys.modules:
-        sys.modules[_mod] = types.ModuleType(_mod)
-
+# ---------------------------------------------------------------------------
+# Load module under test
+# ---------------------------------------------------------------------------
 def _load():
-    fpath = os.path.join(DAGS_SRC_DB, "vector_embed.py")
+    fpath = os.path.join(DAGS_SRC_DB, "upload_to_db.py")
     if not os.path.isfile(fpath):
-        raise ImportError(f"Could not find vector_embed.py at {fpath}")
-    spec = importlib.util.spec_from_file_location("vector_embed", fpath)
+        raise ImportError(f"Could not find upload_to_db.py at {fpath}")
+    spec = importlib.util.spec_from_file_location("upload_to_db", fpath)
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["vector_embed"] = mod
+    sys.modules["upload_to_db"] = mod
     spec.loader.exec_module(mod)
     return mod
 
@@ -68,198 +57,277 @@ M = _load()
 
 
 # =============================================================================
-# 1) _flatten_details tests
+# 1) _read_csv tests
 # =============================================================================
 
-@pytest.mark.parametrize("input_val, expected_contains", [
-    (None, ""),
-    (np.nan, ""),
-    ("", ""),
-    ("  hello  ", "hello"),
-    ('{"a": "1", "b": "x"}', "a: 1"),
-    ('{"a": "1", "b": "x"}', "b: x"),
-    ("{bad json", "{bad json"),
-    ({"color": "red", "size": "M"}, "color: red"),
-    ({"color": "red", "size": "M"}, "size: M"),
-    (["a", "b"], ""),
-    ([{"k": "v"}], ""),
-])
-def test_flatten_details_various_inputs(input_val, expected_contains):
-    out = M._flatten_details(input_val)
-    assert isinstance(out, str)
-    if expected_contains == "":
-        assert out.strip() == ""
-    else:
-        assert expected_contains in out
-
-
-def test_flatten_details_dict_ignores_empty_values():
-    out = M._flatten_details({"a": "", "b": None, "c": "ok"})
-    assert "c: ok" in out
-    assert "a:" not in out
-    assert "b:" not in out
-
-
-# =============================================================================
-# 2) build_product_text tests
-# =============================================================================
-
-def test_build_product_text_concatenates_fields_and_details():
-    row = pd.Series({
-        "product_name": "Widget", "category": "Tools",
-        "description": "A useful widget", "features": "Lightweight",
-        "details": {"color": "blue"},
-    })
-    out = M.build_product_text(row)
-    assert "Widget" in out
-    assert "Tools" in out
-    assert "color: blue" in out
-    assert " | " in out
-
-
-def test_build_product_text_skips_empty_fields():
-    row = pd.Series({
-        "product_name": "Widget", "category": "",
-        "description": np.nan, "features": "   ", "details": None,
-    })
-    assert M.build_product_text(row) == "Widget"
-
-
-# =============================================================================
-# 3) build_review_text tests
-# =============================================================================
-
-def test_build_review_text_title_and_body_joined():
-    row = pd.Series({"review_title": "Great", "review_text": "Loved it"})
-    assert M.build_review_text(row) == "Great | Loved it"
-
-
-def test_build_review_text_skips_empty_values():
-    row = pd.Series({"review_title": "  ", "review_text": "Body"})
-    assert M.build_review_text(row) == "Body"
-
-
-# =============================================================================
-# 4) _read_file tests
-# =============================================================================
-
-def test_read_file_csv(tmp_path):
-    p = tmp_path / "products.csv"
-    pd.DataFrame([{"a": 1, "b": "x"}]).to_csv(p, index=False)
-    df = M._read_file(str(p))
+def test_read_csv_returns_dataframe(tmp_path):
+    p = tmp_path / "financial.csv"
+    pd.DataFrame([{"user_id": "u1", "monthly_income": 5000}]).to_csv(p, index=False)
+    df = M._read_csv(str(p))
+    assert isinstance(df, pd.DataFrame)
     assert df.shape == (1, 2)
-    assert df.loc[0, "a"] == 1
+    assert df.loc[0, "user_id"] == "u1"
 
 
-def test_read_file_jsonl(tmp_path):
+def test_read_csv_multiple_rows(tmp_path):
+    p = tmp_path / "financial.csv"
+    pd.DataFrame([
+        {"user_id": "u1", "monthly_income": 5000},
+        {"user_id": "u2", "monthly_income": 3000},
+    ]).to_csv(p, index=False)
+    df = M._read_csv(str(p))
+    assert len(df) == 2
+
+
+# =============================================================================
+# 2) _read_jsonl tests
+# =============================================================================
+
+def test_read_jsonl_returns_dataframe(tmp_path):
+    p = tmp_path / "products.jsonl"
+    with open(p, "w") as f:
+        f.write(json.dumps({"product_id": "p1", "price": 10.0}) + "\n")
+        f.write(json.dumps({"product_id": "p2", "price": 20.0}) + "\n")
+    df = M._read_jsonl(str(p))
+    assert isinstance(df, pd.DataFrame)
+    assert len(df) == 2
+    assert df.loc[1, "product_id"] == "p2"
+
+
+def test_read_jsonl_single_record(tmp_path):
     p = tmp_path / "reviews.jsonl"
     with open(p, "w") as f:
-        f.write(json.dumps({"a": 1, "b": "x"}) + "\n")
-        f.write(json.dumps({"a": 2, "b": "y"}) + "\n")
-    df = M._read_file(str(p))
-    assert df.shape == (2, 2)
-    assert df.loc[1, "b"] == "y"
+        f.write(json.dumps({"user_id": "u1", "rating": 5}) + "\n")
+    df = M._read_jsonl(str(p))
+    assert df.shape == (1, 2)
 
 
 # =============================================================================
-# 5) generate_embeddings tests
+# 3) _select_and_rename tests
 # =============================================================================
 
-def test_generate_embeddings_calls_model_encode_with_expected_args():
-    fake_model = MagicMock()
-    dim = getattr(M, "EMBEDDING_DIM", 384)
-    fake_model.encode.return_value = np.zeros((2, dim), dtype=np.float32)
+def test_select_and_rename_keeps_mapped_columns():
+    df = pd.DataFrame([{"a": 1, "b": 2, "c": 3}])
+    col_map = {"a": "alpha", "b": "beta"}
+    result = M._select_and_rename(df, col_map)
+    assert list(result.columns) == ["alpha", "beta"]
+    assert result.loc[0, "alpha"] == 1
 
-    out = M.generate_embeddings(["a", "b"], fake_model)
 
-    assert isinstance(out, np.ndarray)
-    assert out.shape == (2, dim)
-    fake_model.encode.assert_called_once()
+def test_select_and_rename_drops_unmapped_columns():
+    df = pd.DataFrame([{"a": 1, "extra_col": 99}])
+    result = M._select_and_rename(df, {"a": "alpha"})
+    assert "extra_col" not in result.columns
+
+
+def test_select_and_rename_handles_missing_source_columns():
+    df = pd.DataFrame([{"a": 1}])
+    result = M._select_and_rename(df, {"a": "alpha", "missing": "m"})
+    assert list(result.columns) == ["alpha"]
+
+
+def test_select_and_rename_identity_mapping():
+    df = pd.DataFrame([{"user_id": "u1", "rating": 4}])
+    result = M._select_and_rename(df, {"user_id": "user_id", "rating": "rating"})
+    assert list(result.columns) == ["user_id", "rating"]
 
 
 # =============================================================================
-# 6) store_* embeddings tests
+# 4) _ensure_jsonb tests
 # =============================================================================
 
-def _mock_engine_with_conn():
-    engine, conn, cm = MagicMock(), MagicMock(), MagicMock()
-    cm.__enter__.return_value = conn
-    cm.__exit__.return_value = False
+def test_ensure_jsonb_serializes_dict():
+    df = pd.DataFrame([{"details": {"Brand": "TestBrand", "Color": "Red"}}])
+    result = M._ensure_jsonb(df.copy(), "details")
+    val = result.loc[0, "details"]
+    assert isinstance(val, str)
+    parsed = json.loads(val)
+    assert parsed["Brand"] == "TestBrand"
+
+
+def test_ensure_jsonb_passes_through_string():
+    df = pd.DataFrame([{"details": '{"Brand": "X"}'}])
+    result = M._ensure_jsonb(df.copy(), "details")
+    assert result.loc[0, "details"] == '{"Brand": "X"}'
+
+
+def test_ensure_jsonb_handles_none():
+    df = pd.DataFrame([{"details": None}])
+    result = M._ensure_jsonb(df.copy(), "details")
+    assert result.loc[0, "details"] is None
+
+
+def test_ensure_jsonb_handles_nan():
+    df = pd.DataFrame([{"details": float("nan")}])
+    result = M._ensure_jsonb(df.copy(), "details")
+    assert result.loc[0, "details"] is None
+
+
+def test_ensure_jsonb_serializes_list():
+    df = pd.DataFrame([{"details": ["a", "b"]}])
+    result = M._ensure_jsonb(df.copy(), "details")
+    assert json.loads(result.loc[0, "details"]) == ["a", "b"]
+
+
+def test_ensure_jsonb_missing_column_noop():
+    df = pd.DataFrame([{"other_col": 1}])
+    result = M._ensure_jsonb(df.copy(), "details")
+    assert "other_col" in result.columns
+    assert "details" not in result.columns
+
+
+# =============================================================================
+# 5) Column mappings
+# =============================================================================
+
+def test_financial_cols_has_required_keys():
+    required = {"user_id", "monthly_income", "monthly_expenses", "credit_score"}
+    assert required.issubset(set(M.FINANCIAL_COLS.keys()))
+
+
+def test_product_cols_has_required_keys():
+    required = {"product_id", "product_name", "price", "category"}
+    assert required.issubset(set(M.PRODUCT_COLS.keys()))
+
+
+def test_review_cols_has_required_keys():
+    required = {"user_id", "product_id", "rating", "review_text"}
+    assert required.issubset(set(M.REVIEW_COLS.keys()))
+
+
+# =============================================================================
+# 6) load_financial tests
+# =============================================================================
+
+def _mock_engine():
+    engine = MagicMock()
+    conn = MagicMock()
+    cm = MagicMock()
+    cm.__enter__ = MagicMock(return_value=conn)
+    cm.__exit__ = MagicMock(return_value=False)
     engine.begin.return_value = cm
+    engine.connect.return_value = cm
     return engine, conn
 
 
-def test_store_product_embeddings_executes_db_calls():
-    engine, conn = _mock_engine_with_conn()
-    dim = getattr(M, "EMBEDDING_DIM", 384)
-    M.store_product_embeddings(engine, ["p1","p2","p3"], np.zeros((3, dim), dtype=np.float32))
-    assert conn.execute.call_count >= 1
+def test_load_financial_reads_and_loads(tmp_path):
+    p = tmp_path / "financial_featured.csv"
+    pd.DataFrame([{
+        "user_id": "u1", "monthly_income": 5000, "monthly_expenses": 2000,
+        "savings_balance": 30000, "credit_score": 720,
+    }]).to_csv(p, index=False)
+
+    engine, conn = _mock_engine()
+    with patch.object(M, "_truncate_table"):
+        with patch("pandas.DataFrame.to_sql") as mock_to_sql:
+            result = M.load_financial(engine, str(p), truncate=True)
+    assert result == 1
 
 
-def test_store_review_embeddings_executes_db_calls():
-    engine, conn = _mock_engine_with_conn()
-    dim = getattr(M, "EMBEDDING_DIM", 384)
-    M.store_review_embeddings(engine, ["p1","p2"], ["u1","u2"], np.zeros((2, dim), dtype=np.float32))
-    assert conn.execute.call_count >= 1
+def test_load_financial_no_truncate(tmp_path):
+    p = tmp_path / "fin.csv"
+    pd.DataFrame([{"user_id": "u1", "monthly_income": 5000}]).to_csv(p, index=False)
+
+    engine, conn = _mock_engine()
+    with patch.object(M, "_truncate_table") as mock_trunc:
+        with patch("pandas.DataFrame.to_sql"):
+            M.load_financial(engine, str(p), truncate=False)
+    mock_trunc.assert_not_called()
 
 
 # =============================================================================
-# 7) embed_products / embed_reviews tests
+# 7) load_products tests
 # =============================================================================
 
-def test_embed_products_raises_without_product_id(tmp_path):
-    p = tmp_path / "products.csv"
-    pd.DataFrame([{"product_name": "x"}]).to_csv(p, index=False)
-    with pytest.raises(ValueError, match="product_id"):
-        M.embed_products(MagicMock(), str(p), MagicMock())
+def test_load_products_reads_jsonl(tmp_path):
+    p = tmp_path / "product_featured.jsonl"
+    with open(p, "w") as f:
+        f.write(json.dumps({
+            "product_id": "p1", "product_name": "Widget",
+            "price": 10.0, "category": "Tools",
+        }) + "\n")
+
+    engine, conn = _mock_engine()
+    with patch.object(M, "_truncate_table"):
+        with patch("pandas.DataFrame.to_sql"):
+            result = M.load_products(engine, str(p), truncate=True)
+    assert result == 1
 
 
-def test_embed_products_filters_empty_text_and_stores(tmp_path):
-    p = tmp_path / "products.csv"
-    pd.DataFrame([
-        {"product_id": "p1", "product_name": "Widget", "category": "Tools"},
-        {"product_id": "p2", "product_name": "   ", "category": ""},
-    ]).to_csv(p, index=False)
-    dim = getattr(M, "EMBEDDING_DIM", 384)
-    with patch.object(M, "generate_embeddings", return_value=np.zeros((1, dim), dtype=np.float32)) as mg, \
-         patch.object(M, "store_product_embeddings") as ms:
-        n = M.embed_products(MagicMock(), str(p), MagicMock())
-        assert n == 1
-        mg.assert_called_once()
-        assert ms.call_args[0][1] == ["p1"]
+# =============================================================================
+# 8) load_reviews tests
+# =============================================================================
+
+def test_load_reviews_reads_jsonl(tmp_path):
+    p = tmp_path / "review_featured.jsonl"
+    with open(p, "w") as f:
+        f.write(json.dumps({
+            "user_id": "u1", "product_id": "p1",
+            "rating": 4.5, "review_text": "Great",
+            "verified_purchase": True, "helpful_vote": 2,
+        }) + "\n")
+
+    engine, conn = _mock_engine()
+    # Mock the product_id lookup (simulates existing products in DB)
+    mock_read_sql = pd.DataFrame({"product_id": ["p1"]})
+    with patch.object(M, "_truncate_table"), \
+         patch("pandas.read_sql", return_value=mock_read_sql), \
+         patch("pandas.DataFrame.to_sql"):
+        result = M.load_reviews(engine, str(p), truncate=True)
+    assert result == 1
 
 
-def test_embed_reviews_raises_without_required_columns(tmp_path):
-    p = tmp_path / "reviews.csv"
-    pd.DataFrame([{"review_text": "x"}]).to_csv(p, index=False)
-    with pytest.raises(ValueError, match="product_id"):
-        M.embed_reviews(MagicMock(), str(p), MagicMock())
+def test_load_reviews_drops_orphan_reviews(tmp_path):
+    p = tmp_path / "review_featured.jsonl"
+    with open(p, "w") as f:
+        f.write(json.dumps({"user_id": "u1", "product_id": "p1", "rating": 5, "review_text": "ok"}) + "\n")
+        f.write(json.dumps({"user_id": "u2", "product_id": "orphan", "rating": 3, "review_text": "no match"}) + "\n")
+
+    engine, conn = _mock_engine()
+    mock_read_sql = pd.DataFrame({"product_id": ["p1"]})  # only p1 exists
+    with patch.object(M, "_truncate_table"), \
+         patch("pandas.read_sql", return_value=mock_read_sql), \
+         patch("pandas.DataFrame.to_sql"):
+        result = M.load_reviews(engine, str(p), truncate=True)
+    assert result == 1  # orphan review filtered out
 
 
-def test_embed_reviews_skips_when_no_text(tmp_path):
-    p = tmp_path / "reviews.csv"
-    pd.DataFrame([
-        {"product_id": "p1", "user_id": "u1", "review_title": "   ", "review_text": ""},
-        {"product_id": "p2", "user_id": "u2", "review_title": None,  "review_text": "   "},
-    ]).to_csv(p, index=False)
-    with patch.object(M, "generate_embeddings") as mg, \
-         patch.object(M, "store_review_embeddings") as ms:
-        assert M.embed_reviews(MagicMock(), str(p), MagicMock()) == 0
-        mg.assert_not_called()
-        ms.assert_not_called()
+# =============================================================================
+# 9) load_all tests
+# =============================================================================
+
+def test_load_all_calls_all_loaders():
+    mock_engine = MagicMock()
+    with patch.object(M, "get_engine", return_value=mock_engine), \
+         patch.object(M, "create_tables"), \
+         patch.object(M, "load_financial", return_value=10) as mock_fin, \
+         patch.object(M, "load_products", return_value=20) as mock_prod, \
+         patch.object(M, "load_reviews", return_value=30) as mock_rev:
+        result = M.load_all("/fin.csv", "/prod.jsonl", "/rev.jsonl")
+
+    mock_fin.assert_called_once_with(mock_engine, "/fin.csv", True)
+    mock_prod.assert_called_once_with(mock_engine, "/prod.jsonl", True)
+    mock_rev.assert_called_once_with(mock_engine, "/rev.jsonl", True)
+    assert result == {"financial_profiles": 10, "products": 20, "reviews": 30}
 
 
-def test_embed_reviews_filters_and_stores(tmp_path):
-    p = tmp_path / "reviews.csv"
-    pd.DataFrame([
-        {"product_id": "p1", "user_id": "u1", "review_title": "Nice", "review_text": ""},
-        {"product_id": "p2", "user_id": "u2", "review_title": "   ", "review_text": "   "},
-    ]).to_csv(p, index=False)
-    dim = getattr(M, "EMBEDDING_DIM", 384)
-    with patch.object(M, "generate_embeddings", return_value=np.zeros((1, dim), dtype=np.float32)) as mg, \
-         patch.object(M, "store_review_embeddings") as ms:
-        n = M.embed_reviews(MagicMock(), str(p), MagicMock())
-        assert n == 1
-        mg.assert_called_once()
-        assert ms.call_args[0][1] == ["p1"]
-        assert ms.call_args[0][2] == ["u1"]
+
+
+# =============================================================================
+# 10) _truncate_table
+# =============================================================================
+
+def test_truncate_table_executes_cascade_sql():
+    engine = MagicMock()
+    conn = MagicMock()
+    cm = MagicMock()
+    cm.__enter__ = MagicMock(return_value=conn)
+    cm.__exit__ = MagicMock(return_value=False)
+    engine.begin.return_value = cm
+    M._truncate_table(engine, "products")
+    conn.execute.assert_called_once()
+    sql = str(conn.execute.call_args[0][0])
+    assert "TRUNCATE" in sql
+    assert "products" in sql
+    assert "CASCADE" in sql
+

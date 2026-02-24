@@ -1,4 +1,11 @@
-# tests/validation/test_feature_validator.py
+"""
+Tests for Feature Validation — validate/feature_validator.py.
+
+Covers feature-level checks: ratio range validation (0–1 for ratios,
+≥0 for emergency_fund_months), rating_variance non-negative, NaN detection
+in computed features, and cross-dataset consistency between product features
+and review ratings.
+"""
 import os
 import sys
 import types
@@ -12,18 +19,9 @@ import pandas as pd
 import pytest
 
 # ---------------------------------------------------------------------------
-# Path setup
+# Path constants  (sys.path set up by conftest.py)
 # ---------------------------------------------------------------------------
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
-sys.path.insert(0, PROJECT_ROOT)
-
-for _p in [
-    os.path.join(PROJECT_ROOT, "dags", "src", "validation", "validate"),
-    os.path.join(PROJECT_ROOT, "dags", "src", "validation"),
-    os.path.join(PROJECT_ROOT, "dags", "src"),
-]:
-    if os.path.isdir(_p) and _p not in sys.path:
-        sys.path.insert(0, _p)
 
 # ---------------------------------------------------------------------------
 # Stub validation_config
@@ -328,11 +326,11 @@ def test_run_feature_validation_valid_files_passes(tmp_path):
     fin = tmp_path / "fin.csv"
     rev = tmp_path / "rev.csv"
     pd.DataFrame({
-        "discretionary_income":  [2500.0],
-        "debt_to_income_ratio":  [0.1],
-        "savings_rate":          [0.2],
-        "expense_burden_ratio":  [0.5],
-        "emergency_fund_months": [6.0],
+        "discretionary_income":          [2500.0],
+        "debt_to_income_ratio":          [0.1],
+        "saving_to_income_ratio":        [0.2],
+        "monthly_expense_burden_ratio":  [0.5],
+        "emergency_fund_months":         [6.0],
     }).to_csv(fin, index=False)
     pd.DataFrame({"rating_variance": [0.5]}).to_csv(rev, index=False)
 
@@ -343,16 +341,4 @@ def test_run_feature_validation_valid_files_passes(tmp_path):
     )
     assert isinstance(report, ValidationReport)
     assert report.stage == "features"
-
-def test_run_feature_validation_returns_report_object(tmp_path):
-    fin = tmp_path / "fin.csv"
-    rev = tmp_path / "rev.csv"
-    pd.DataFrame({"discretionary_income": [100.0],
-                  "debt_to_income_ratio": [0.1],
-                  "savings_rate": [0.1],
-                  "expense_burden_ratio": [0.4],
-                  "emergency_fund_months": [3.0]}).to_csv(fin, index=False)
-    pd.DataFrame({"rating_variance": [0.0]}).to_csv(rev, index=False)
-    report = M.run_feature_validation(str(fin), str(rev), None)
-    assert hasattr(report, "results")
-    assert len(report.results) > 0
+    assert report.passed

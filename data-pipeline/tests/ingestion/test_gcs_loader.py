@@ -1,4 +1,9 @@
-# tests/ingestion/test_gcs_loader.py
+"""
+Tests for Data Ingestion — gcs_loader.py.
+
+Covers GCSLoader initialisation, blob download/upload, CSV and JSONL loading
+from Google Cloud Storage, and convenience functions for each data source.
+"""
 import os
 import sys
 import types
@@ -10,16 +15,9 @@ import pandas as pd
 import pytest
 
 # ---------------------------------------------------------------------------
-# Path setup
+# Path constants  (sys.path set up by conftest.py)
 # ---------------------------------------------------------------------------
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
-sys.path.insert(0, PROJECT_ROOT)
-for _p in [
-    os.path.join(PROJECT_ROOT, "dags", "src", "ingestion"),
-    os.path.join(PROJECT_ROOT, "dags", "src"),
-]:
-    if os.path.isdir(_p) and _p not in sys.path:
-        sys.path.insert(0, _p)
 
 # ---------------------------------------------------------------------------
 # Stub google.cloud and google.oauth2
@@ -33,11 +31,16 @@ def _stub_google():
     google_oauth2_sa = types.ModuleType("google.oauth2.service_account")
     google_oauth2_sa.Credentials = MagicMock()
 
-    sys.modules.setdefault("google", google)
-    sys.modules.setdefault("google.cloud", google_cloud)
-    sys.modules.setdefault("google.cloud.storage", google_cloud_storage)
-    sys.modules.setdefault("google.oauth2", google_oauth2)
-    sys.modules.setdefault("google.oauth2.service_account", google_oauth2_sa)
+    google.cloud = google_cloud
+    google.oauth2 = google_oauth2
+    google_cloud.storage = google_cloud_storage
+    google_oauth2.service_account = google_oauth2_sa
+
+    sys.modules["google"] = google
+    sys.modules["google.cloud"] = google_cloud
+    sys.modules["google.cloud.storage"] = google_cloud_storage
+    sys.modules["google.oauth2"] = google_oauth2
+    sys.modules["google.oauth2.service_account"] = google_oauth2_sa
 
 _stub_google()
 
@@ -279,11 +282,16 @@ def test_upload_dataframe_unsupported_format_raises():
 def test_list_blobs_returns_names():
     """list_blobs returns list of blob names."""
     loader = _make_loader()
-    fake_blobs = [MagicMock(name="raw/a.csv"), MagicMock(name="raw/b.csv")]
-    loader.client.bucket.return_value.list_blobs.return_value = iter(fake_blobs)
+    blob_a, blob_b = MagicMock(), MagicMock()
+    blob_a.name = "raw/a.csv"
+    blob_b.name = "raw/b.csv"
+    loader.client.bucket.return_value.list_blobs.return_value = iter([blob_a, blob_b])
 
     result = loader.list_blobs("bucket", prefix="raw/")
     assert isinstance(result, list)
+    assert len(result) == 2
+    assert "raw/a.csv" in result
+    assert "raw/b.csv" in result
 
 
 def test_list_blobs_with_no_prefix():

@@ -1,4 +1,9 @@
-# tests/validation/test_anomaly_validator.py
+"""
+Tests for Anomaly Detection & Alerts — anomaly/anomaly_validator.py.
+
+Covers outlier detection using IQR and z-score methods, distribution checks,
+and threshold-based alerting for financial, product, and review data anomalies.
+"""
 import os
 import sys
 import types
@@ -11,18 +16,9 @@ import pandas as pd
 import pytest
 
 # ---------------------------------------------------------------------------
-# Path setup
+# Path constants  (sys.path set up by conftest.py)
 # ---------------------------------------------------------------------------
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
-sys.path.insert(0, PROJECT_ROOT)
-
-for _p in [
-    os.path.join(PROJECT_ROOT, "dags", "src", "validation"),
-    os.path.join(PROJECT_ROOT, "dags", "src", "validation", "anomaly"),
-    os.path.join(PROJECT_ROOT, "dags", "src"),
-]:
-    if os.path.isdir(_p) and _p not in sys.path:
-        sys.path.insert(0, _p)
 
 # ---------------------------------------------------------------------------
 # Stub validation_config

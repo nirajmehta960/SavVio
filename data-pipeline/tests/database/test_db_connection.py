@@ -1,9 +1,18 @@
-import pytest
+"""
+Tests for Load to Database — connection and schema layer.
+
+Covers:
+  db_connection.py — _dev_url, _prod_url, get_engine, get_session, ensure_pgvector
+  db_schema.py     — create_tables, table definitions, NOT NULL constraints, FKs
+"""
 import os
 import sys
-from sqlalchemy import create_engine, inspect
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
+import pytest
+from unittest.mock import patch, MagicMock
+from sqlalchemy import create_engine, inspect, text
+
+# sys.path set up by conftest.py
 
 from dags.src.database.db_schema import (  # noqa: E402
     Base,
@@ -12,6 +21,16 @@ from dags.src.database.db_schema import (  # noqa: E402
     Review,
     create_tables,
 )
+
+from dags.src.database.db_connection import (  # noqa: E402
+    get_engine,
+    get_session,
+    ensure_pgvector,
+    ENV_MAP,
+    _dev_url,
+    _prod_url,
+)
+
 
 # =============================================================================
 # Fixtures
@@ -31,7 +50,94 @@ def inspector(engine):
 
 
 # =============================================================================
-# Tests for create_tables
+# 1) db_connection.py — _dev_url / _prod_url / get_engine / get_session
+# =============================================================================
+
+def test_dev_url_uses_defaults():
+    with patch.dict(os.environ, {}, clear=True):
+        url = _dev_url()
+    assert "postgresql" in url
+    assert "postgres" in url  # default user
+    assert "localhost" in url or "5432" in url
+
+
+def test_dev_url_reads_env_vars():
+    env = {
+        "DB_USER": "myuser",
+        "DB_PASSWORD": "mypass",
+        "DB_HOST": "myhost",
+        "DB_PORT": "5433",
+        "DB_NAME": "mydb",
+    }
+    with patch.dict(os.environ, env, clear=True):
+        url = _dev_url()
+    assert "myuser" in url
+    assert "mypass" in url
+    assert "myhost" in url
+    assert "5433" in url
+    assert "mydb" in url
+
+
+def test_prod_url_reads_required_env_vars():
+    env = {
+        "DB_USER": "produser",
+        "DB_PASSWORD": "prodpass",
+        "DB_NAME": "savvio_prod",
+    }
+    with patch.dict(os.environ, env, clear=True):
+        url = _prod_url()
+    assert "produser" in url
+    assert "prodpass" in url
+    assert "savvio_prod" in url
+
+
+def test_prod_url_raises_without_db_user():
+    with patch.dict(os.environ, {}, clear=True):
+        with pytest.raises(KeyError):
+            _prod_url()
+
+
+def test_get_engine_invalid_env_raises():
+    with pytest.raises(ValueError, match="Unknown environment"):
+        get_engine("staging")
+
+
+@patch("dags.src.database.db_connection.create_engine")
+def test_get_engine_dev_calls_create_engine(mock_create):
+    mock_create.return_value = MagicMock()
+    engine = get_engine("dev", echo=True)
+    mock_create.assert_called_once()
+    call_kwargs = mock_create.call_args
+    assert call_kwargs[1]["echo"] is True
+    assert call_kwargs[1]["pool_pre_ping"] is True
+
+
+@patch("dags.src.database.db_connection.sessionmaker")
+def test_get_session_returns_session(mock_sm):
+    mock_session_class = MagicMock()
+    mock_sm.return_value = mock_session_class
+    engine = MagicMock()
+    session = get_session(engine)
+    mock_sm.assert_called_once_with(bind=engine)
+    mock_session_class.assert_called_once()
+
+
+def test_ensure_pgvector_executes_create_extension():
+    engine = MagicMock()
+    conn = MagicMock()
+    cm = MagicMock()
+    cm.__enter__ = MagicMock(return_value=conn)
+    cm.__exit__ = MagicMock(return_value=False)
+    engine.connect.return_value = cm
+    ensure_pgvector(engine)
+    conn.execute.assert_called_once()
+    sql_arg = str(conn.execute.call_args[0][0])
+    assert "CREATE EXTENSION" in sql_arg and "vector" in sql_arg
+    conn.commit.assert_called_once()
+
+
+# =============================================================================
+# 2) db_schema.py — create_tables
 # =============================================================================
 
 def test_create_tables_success(inspector):
@@ -42,15 +148,15 @@ def test_create_tables_success(inspector):
 
 
 # =============================================================================
-# Tests for Products table
+# 3) db_schema.py — Products table
 # =============================================================================
 
 def test_products_table_has_expected_columns(inspector):
     cols = {c["name"]: c for c in inspector.get_columns("products")}
     expected = {
         "id", "product_id", "product_name", "price",
-        "average_rating", "rating_number", "description",
-        "features", "details", "category", "created_at",
+        "average_rating", "rating_number", "rating_variance",
+        "description", "features", "details", "category", "created_at",
     }
     assert expected.issubset(set(cols.keys()))
 
@@ -62,7 +168,7 @@ def test_products_table_not_null_constraints(inspector):
 
 
 # =============================================================================
-# Tests for FinancialProfile table
+# 4) db_schema.py — FinancialProfile table
 # =============================================================================
 
 def test_financial_profiles_table_has_expected_columns(inspector):
@@ -83,8 +189,8 @@ def test_financial_profiles_table_has_expected_columns(inspector):
         "region",
         "discretionary_income",
         "debt_to_income_ratio",
-        "saving_to_income_ratio",       # 修正：原本是 savings_rate
-        "monthly_expense_burden_ratio", # 修正：原本是 expense_burden_ratio
+        "saving_to_income_ratio",
+        "monthly_expense_burden_ratio",
         "emergency_fund_months",
         "created_at",
     }
@@ -98,7 +204,7 @@ def test_financial_profiles_not_null_constraints(inspector):
 
 
 # =============================================================================
-# Tests for Reviews table
+# 5) db_schema.py — Reviews table
 # =============================================================================
 
 def test_reviews_table_has_expected_columns(inspector):
@@ -127,7 +233,7 @@ def test_reviews_foreign_key_to_products(inspector):
 
 
 # =============================================================================
-# Tests for model metadata
+# 6) db_schema.py — model metadata
 # =============================================================================
 
 def test_model_tablenames_and_metadata():

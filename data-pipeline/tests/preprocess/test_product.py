@@ -1,20 +1,30 @@
-import pytest
+"""
+Tests for Data Preprocessing — preprocess/product.py.
+
+Covers product data cleaning: text normalisation, category standardisation,
+title-based category grouping, deduplication, and the full preprocessing
+pipeline for JSONL product records.
+"""
 import json
 import os
 import sys
-import pandas as pd
+
 import numpy as np
+import pandas as pd
+import pytest
 from unittest.mock import patch, MagicMock, mock_open
 
-# --- Magic trick: Ensure Python can locate dags/src ---
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
+# sys.path set up by conftest.py
 
 from dags.src.preprocess.product import (
     _normalize_text,
     _normalize_categories,
     _title_group_key,
     _normalize_parent_asin,
-    preprocess_product_data
+    _process_stage1_batch,
+    preprocess_product_data,
+    ProductStats,
+    WORKING_COLUMNS,
 )
 
 # =============================================================================
@@ -99,3 +109,79 @@ def test_preprocess_product_full_flow(mock_remove, mock_ensure):
         # Assertion 2: missing price should be filled (median should be 50.0)
         p2_price = df_result[df_result["product_id"] == "P2"]["price"].values[0]
         assert p2_price == 50.0
+
+
+# =============================================================================
+# 4. Tests for _process_stage1_batch
+# =============================================================================
+
+def _make_record(**overrides):
+    base = {
+        "parent_asin": "A001",
+        "title": "Widget",
+        "price": 10.0,
+        "average_rating": 4.5,
+        "rating_number": 100,
+        "description": "A widget",
+        "features": "durable",
+        "details": "{}",
+        "categories": ["Tools"],
+    }
+    base.update(overrides)
+    return base
+
+
+def test_stage1_empty_records():
+    stats = ProductStats()
+    df = _process_stage1_batch([], set(), stats)
+    assert len(df) == 0
+    assert list(df.columns) == WORKING_COLUMNS
+
+
+def test_stage1_removes_missing_parent_asin():
+    stats = ProductStats()
+    records = [_make_record(parent_asin=""), _make_record(parent_asin="A001")]
+    df = _process_stage1_batch(records, set(), stats)
+    assert len(df) == 1
+    assert stats.removed_missing_parent_asin == 1
+
+
+def test_stage1_deduplicates_on_parent_asin():
+    stats = ProductStats()
+    records = [_make_record(parent_asin="A001"), _make_record(parent_asin="A001")]
+    df = _process_stage1_batch(records, set(), stats)
+    assert len(df) == 1
+    assert stats.duplicates_removed == 1
+
+
+def test_stage1_global_dedup_across_batches():
+    """Seen set persists across batch calls."""
+    seen = set()
+    stats = ProductStats()
+    _process_stage1_batch([_make_record(parent_asin="A001")], seen, stats)
+    df2 = _process_stage1_batch([_make_record(parent_asin="A001")], seen, stats)
+    assert len(df2) == 0
+    assert stats.duplicates_removed == 1
+
+
+def test_stage1_removes_negative_price():
+    stats = ProductStats()
+    records = [_make_record(parent_asin="A001", price=-5.0)]
+    df = _process_stage1_batch(records, set(), stats)
+    assert len(df) == 0
+    assert stats.negative_price_removed == 1
+
+
+def test_stage1_removes_zero_price():
+    stats = ProductStats()
+    records = [_make_record(parent_asin="A001", price=0)]
+    df = _process_stage1_batch(records, set(), stats)
+    assert len(df) == 0
+    assert stats.low_price_removed == 1
+
+
+def test_stage1_normalizes_text_fields():
+    stats = ProductStats()
+    records = [_make_record(parent_asin="A002", title="  Hello World  ")]
+    df = _process_stage1_batch(records, set(), stats)
+    assert df.iloc[0]["title"] == "Hello World"

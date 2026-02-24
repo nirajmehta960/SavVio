@@ -11,6 +11,7 @@ Uses sentence-transformers (all-MiniLM-L6-v2, 384-dim) by default.
 Processes in batches to keep memory usage reasonable.
 """
 
+from __future__ import annotations
 import json
 import os
 import logging
