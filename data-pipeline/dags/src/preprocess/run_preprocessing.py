@@ -38,11 +38,8 @@ except ImportError as e:
         sys.exit(1)
 
 # Configure centralized logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="[%(asctime)s] [%(levelname)s] [%(name)s] %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S"
-)
+from src.utils import setup_logging
+setup_logging()
 logger = logging.getLogger("run_preprocessing")
 
 def run_pipeline():

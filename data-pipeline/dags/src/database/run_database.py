@@ -107,10 +107,8 @@ def generate_and_load_embedding_task(**context):
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s [%(levelname)s] %(message)s",
-    )
+    from src.utils import setup_logging
+    setup_logging()
     logger.info("Running full database loading pipeline...")
     load_financial_task()
     load_products_task()
