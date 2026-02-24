@@ -1,4 +1,9 @@
-# tests/validation/test_detectors.py
+"""
+Tests for Anomaly Detection & Alerts — anomaly/detectors.py.
+
+Covers the pluggable anomaly detection functions: IQR-based outlier detection,
+z-score outlier detection, and isolation-forest-based anomaly scoring.
+"""
 import os
 import sys
 import importlib.util
@@ -8,18 +13,9 @@ import numpy as np
 import pytest
 
 # ---------------------------------------------------------------------------
-# Path setup
+# Path constants  (sys.path set up by conftest.py)
 # ---------------------------------------------------------------------------
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
-sys.path.insert(0, PROJECT_ROOT)
-
-for _p in [
-    os.path.join(PROJECT_ROOT, "dags", "src", "validation", "anomaly"),
-    os.path.join(PROJECT_ROOT, "dags", "src", "validation"),
-    os.path.join(PROJECT_ROOT, "dags", "src"),
-]:
-    if os.path.isdir(_p) and _p not in sys.path:
-        sys.path.insert(0, _p)
 
 # ---------------------------------------------------------------------------
 # Load module under test

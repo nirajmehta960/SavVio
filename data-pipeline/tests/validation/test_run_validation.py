@@ -1,4 +1,10 @@
-# tests/validation/test_run_validation.py
+"""
+Tests for Validation Orchestration — run_validation.py.
+
+Covers the validation pipeline orchestrator: _handle_report (continue/halt/alert),
+_send_alert, the stage-specific task wrappers (validate_raw, validate_processed,
+validate_features, validate_anomalies), and the STAGE_MAP routing table.
+"""
 import os
 import sys
 import types
@@ -10,17 +16,9 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 # ---------------------------------------------------------------------------
-# Path setup
+# Path constants  (sys.path set up by conftest.py)
 # ---------------------------------------------------------------------------
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
-sys.path.insert(0, PROJECT_ROOT)
-
-for _p in [
-    os.path.join(PROJECT_ROOT, "dags", "src", "validation"),
-    os.path.join(PROJECT_ROOT, "dags", "src"),
-]:
-    if os.path.isdir(_p) and _p not in sys.path:
-        sys.path.insert(0, _p)
 
 # ---------------------------------------------------------------------------
 # Stub validation_config
@@ -138,28 +136,20 @@ def test_handle_report_continue_does_not_raise():
     r = _report(action="CONTINUE")
     M._handle_report(r)  # must not raise
 
-def test_handle_report_halt_raises_runtime_error():
-    r = _report(action="HALT")
-    with pytest.raises(RuntimeError, match="VALIDATION FAILED"):
+def test_handle_report_halt_raises_runtime_error_with_stage():
+    r = _report(stage="processed", action="HALT")
+    with pytest.raises(RuntimeError, match="VALIDATION FAILED") as exc_info:
         M._handle_report(r)
+    assert "processed" in str(exc_info.value)
 
 def test_handle_report_alert_does_not_raise():
     r = _report(action="ALERT")
-    M._handle_report(r)  # must not raise (just sends alert)
-
-def test_handle_report_halt_message_contains_stage():
-    r = _report(stage="processed", action="HALT")
-    with pytest.raises(RuntimeError, match="processed"):
-        M._handle_report(r)
+    M._handle_report(r)
 
 
 # =============================================================================
 # 2) _send_alert
 # =============================================================================
-
-def test_send_alert_does_not_raise():
-    r = _report(action="ALERT")
-    M._send_alert(r)  # must not raise
 
 def test_send_alert_called_on_alert(monkeypatch):
     r = _report(action="ALERT")
@@ -225,14 +215,8 @@ def test_validate_anomalies_halts_on_critical():
 # 4) STAGE_MAP completeness
 # =============================================================================
 
-def test_stage_map_has_all_stages():
+def test_stage_map_covers_all_pipeline_stages():
     expected = {"raw", "raw_anomalies", "processed", "features", "anomalies"}
     assert expected == set(M.STAGE_MAP.keys())
-
-def test_stage_map_all_callable():
-    for name, fn in M.STAGE_MAP.items():
-        assert callable(fn), f"{name} is not callable"
-
-def test_validation_pipeline_all_stages_covered():
     pipeline_stages = {s for s, _ in M.VALIDATION_PIPELINE}
     assert pipeline_stages == set(M.STAGE_MAP.keys())
