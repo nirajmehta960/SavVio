@@ -161,9 +161,9 @@ def _numeric_slices(column: str, numeric: pd.Series) -> Tuple[pd.Series, List[st
 
     if name == "price":
         labels[numeric.isna()] = "Missing"
-        labels[numeric < 20] = "Budget"
-        labels[(numeric >= 20) & (numeric <= 100)] = "Mid-range"
-        labels[numeric > 100] = "Premium"
+        labels[numeric < 25] = "Budget"
+        labels[(numeric >= 25) & (numeric <= 200)] = "Mid-range"
+        labels[numeric > 200] = "Premium"
         risk_targets = ["Missing", "Budget"]
         return labels, risk_targets
 
@@ -175,7 +175,7 @@ def _numeric_slices(column: str, numeric: pd.Series) -> Tuple[pd.Series, List[st
         risk_targets = ["Low"]
         return labels, risk_targets
 
-    if name == "rating_number":
+    if name in {"rating_number", "num_reviews"}:
         labels[numeric.isna()] = "Missing"
         labels[numeric < 10] = "Low-confidence"
         labels[(numeric >= 10) & (numeric <= 100)] = "Medium-confidence"
