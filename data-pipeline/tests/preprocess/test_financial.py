@@ -1,4 +1,10 @@
-# tests/preprocess/test_financial.py
+"""
+Tests for Data Preprocessing — preprocess/financial.py.
+
+Covers deterministic financial data cleaning: column renaming, has_loan
+coercion, deduplication, missing value handling, range validation, and
+output CSV creation from raw financial CSV input.
+"""
 import os
 import sys
 import types
@@ -9,18 +15,12 @@ import pandas as pd
 import pytest
 
 # ---------------------------------------------------------------------------
-# Path setup
+# Path constants  (sys.path set up by conftest.py)
 # ---------------------------------------------------------------------------
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
-sys.path.insert(0, PROJECT_ROOT)
-
-PREPROCESS_DIR = os.path.join(PROJECT_ROOT, "dags", "src", "preprocess")
-for _p in [PREPROCESS_DIR, os.path.join(PROJECT_ROOT, "dags", "src")]:
-    if os.path.isdir(_p) and _p not in sys.path:
-        sys.path.insert(0, _p)
 
 # ---------------------------------------------------------------------------
-# Stub .utils
+# Stub preprocess.utils
 # ---------------------------------------------------------------------------
 def _stub_utils():
     utils = types.ModuleType("preprocess.utils")

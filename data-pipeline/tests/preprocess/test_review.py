@@ -1,4 +1,10 @@
-# tests/preprocess/test_review.py
+"""
+Tests for Data Preprocessing — preprocess/review.py.
+
+Covers review data cleaning: normalize_text, normalize_id, _to_bool,
+_process_batch (dedup, missing critical field removal, type coercion),
+and the integration pipeline reading raw JSONL to output preprocessed JSONL.
+"""
 import os
 import sys
 import json
@@ -10,18 +16,12 @@ import pandas as pd
 import pytest
 
 # ---------------------------------------------------------------------------
-# Path setup
+# Path constants  (sys.path set up by conftest.py)
 # ---------------------------------------------------------------------------
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
-sys.path.insert(0, PROJECT_ROOT)
-
-PREPROCESS_DIR = os.path.join(PROJECT_ROOT, "dags", "src", "preprocess")
-for _p in [PREPROCESS_DIR, os.path.join(PROJECT_ROOT, "dags", "src")]:
-    if os.path.isdir(_p) and _p not in sys.path:
-        sys.path.insert(0, _p)
 
 # ---------------------------------------------------------------------------
-# Stub .utils (relative import inside review.py)
+# Stub preprocess.utils
 # ---------------------------------------------------------------------------
 def _stub_utils():
     utils = types.ModuleType("preprocess.utils")

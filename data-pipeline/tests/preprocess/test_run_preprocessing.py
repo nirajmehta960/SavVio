@@ -1,4 +1,10 @@
-# tests/preprocess/test_run_preprocessing.py
+"""
+Tests for Data Preprocessing — run_preprocessing.py orchestrator.
+
+Covers main() CLI (exception handling, execution order) and the Airflow task
+wrappers: preprocess_financial_task, preprocess_product_task,
+preprocess_review_task.
+"""
 import os
 import sys
 import types
@@ -8,17 +14,9 @@ from unittest.mock import MagicMock, patch, call
 import pytest
 
 # ---------------------------------------------------------------------------
-# Path setup
+# Path constants  (sys.path set up by conftest.py)
 # ---------------------------------------------------------------------------
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
-sys.path.insert(0, PROJECT_ROOT)
-
-for _p in [
-    os.path.join(PROJECT_ROOT, "dags", "src", "preprocess"),
-    os.path.join(PROJECT_ROOT, "dags", "src"),
-]:
-    if os.path.isdir(_p) and _p not in sys.path:
-        sys.path.insert(0, _p)
 
 # ---------------------------------------------------------------------------
 # Stub preprocess sub-modules BEFORE loading run_preprocessing
@@ -103,116 +101,36 @@ def test_run_pipeline_calls_in_order():
     _rev.main.side_effect  = None
 
 
-def test_run_pipeline_exits_on_financial_failure():
+@pytest.mark.parametrize("failing_module", ["financial", "product", "review"])
+def test_run_pipeline_exits_on_stage_failure(failing_module):
     _reset()
-    _fin.main.side_effect = Exception("financial boom")
+    mod = {"financial": _fin, "product": _prod, "review": _rev}[failing_module]
+    mod.main.side_effect = Exception(f"{failing_module} boom")
     with pytest.raises(SystemExit):
         M.run_pipeline()
-    _fin.main.side_effect = None
-
-
-def test_run_pipeline_exits_on_product_failure():
-    _reset()
-    _prod.main.side_effect = Exception("product boom")
-    with pytest.raises(SystemExit):
-        M.run_pipeline()
-    _prod.main.side_effect = None
-
-
-def test_run_pipeline_exits_on_review_failure():
-    _reset()
-    _rev.main.side_effect = Exception("review boom")
-    with pytest.raises(SystemExit):
-        M.run_pipeline()
-    _rev.main.side_effect = None
-
-
-def test_run_pipeline_product_not_called_if_financial_fails():
-    _reset()
-    _fin.main.side_effect = Exception("boom")
-    with pytest.raises(SystemExit):
-        M.run_pipeline()
-    _prod.main.assert_not_called()
-    _rev.main.assert_not_called()
-    _fin.main.side_effect = None
-
-
-def test_run_pipeline_review_not_called_if_product_fails():
-    _reset()
-    _prod.main.side_effect = Exception("boom")
-    with pytest.raises(SystemExit):
-        M.run_pipeline()
-    _rev.main.assert_not_called()
-    _prod.main.side_effect = None
+    mod.main.side_effect = None
 
 
 # =============================================================================
-# 2) preprocess_financial_task
+# 2) Airflow task wrappers (parametrized)
 # =============================================================================
 
-def test_preprocess_financial_task_calls_main():
-    _reset()
-    M.preprocess_financial_task()
-    _fin.main.assert_called_once()
+@pytest.mark.parametrize("task_fn,mock_mod", [
+    ("preprocess_financial_task", "financial"),
+    ("preprocess_product_task", "product"),
+    ("preprocess_review_task", "review"),
+])
+class TestPreprocessTasks:
+    def test_task_calls_main_with_context(self, task_fn, mock_mod):
+        _reset()
+        mod = {"financial": _fin, "product": _prod, "review": _rev}[mock_mod]
+        getattr(M, task_fn)(ti=MagicMock())
+        mod.main.assert_called_once()
 
-
-def test_preprocess_financial_task_accepts_context():
-    _reset()
-    M.preprocess_financial_task(ti=MagicMock(), dag_run=MagicMock())
-    _fin.main.assert_called_once()
-
-
-def test_preprocess_financial_task_propagates_exception():
-    _reset()
-    _fin.main.side_effect = RuntimeError("oops")
-    with pytest.raises(RuntimeError, match="oops"):
-        M.preprocess_financial_task()
-    _fin.main.side_effect = None
-
-
-# =============================================================================
-# 3) preprocess_product_task
-# =============================================================================
-
-def test_preprocess_product_task_calls_main():
-    _reset()
-    M.preprocess_product_task()
-    _prod.main.assert_called_once()
-
-
-def test_preprocess_product_task_accepts_context():
-    _reset()
-    M.preprocess_product_task(ti=MagicMock())
-    _prod.main.assert_called_once()
-
-
-def test_preprocess_product_task_propagates_exception():
-    _reset()
-    _prod.main.side_effect = RuntimeError("oops")
-    with pytest.raises(RuntimeError, match="oops"):
-        M.preprocess_product_task()
-    _prod.main.side_effect = None
-
-
-# =============================================================================
-# 4) preprocess_review_task
-# =============================================================================
-
-def test_preprocess_review_task_calls_main():
-    _reset()
-    M.preprocess_review_task()
-    _rev.main.assert_called_once()
-
-
-def test_preprocess_review_task_accepts_context():
-    _reset()
-    M.preprocess_review_task(ti=MagicMock())
-    _rev.main.assert_called_once()
-
-
-def test_preprocess_review_task_propagates_exception():
-    _reset()
-    _rev.main.side_effect = RuntimeError("oops")
-    with pytest.raises(RuntimeError, match="oops"):
-        M.preprocess_review_task()
-    _rev.main.side_effect = None
+    def test_task_propagates_exception(self, task_fn, mock_mod):
+        _reset()
+        mod = {"financial": _fin, "product": _prod, "review": _rev}[mock_mod]
+        mod.main.side_effect = RuntimeError("oops")
+        with pytest.raises(RuntimeError, match="oops"):
+            getattr(M, task_fn)()
+        mod.main.side_effect = None
