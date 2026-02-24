@@ -7,6 +7,27 @@
 
 ---
 
+## Evaluation Criteria Mapping
+
+This pipeline is designed to meet the course evaluation criteria:
+
+| Criterion | How It Is Addressed |
+|-----------|---------------------|
+| **1. Proper Documentation** | This README, `SETUP_AND_RUN.md`, well-commented code, and the folder structure below. |
+| **2. Modular Syntax and Code** | Each component lives in `dags/src/` as reusable modules (ingestion, preprocess, features, validation, database, bias). |
+| **3. Pipeline Orchestration (Airflow DAGs)** | `data_pipeline_airflow.py` implements the full DAG with logical task flow and branching for error handling. |
+| **4. Tracking and Logging** | Python logging in every module; Airflow task logs; error alerts via `EmailOperator` on failure. |
+| **5. Data Version Control (DVC)** | Data is versioned with DVC using `raw.dvc`, `processed.dvc`, and `features.dvc` in `dags/data/`; history is maintained in Git. See SETUP_AND_RUN.md. |
+| **6. Pipeline Flow Optimization** | Parallel tasks (ingestion, preprocessing); optimization documented in Phase 19; Airflow Gantt charts available in the UI. |
+| **7. Schema and Statistics Generation** | Great Expectations used in validation (raw, processed, features); schema and quality validated over time. |
+| **8. Anomaly Detection and Alerts** | Anomaly validators in `src/validation/anomaly/`; raw and featured anomaly checks; email alerts on validation failure. |
+| **9. Bias Detection and Mitigation** | Data slicing in `dags/src/bias/` (financial, product, review); slice analysis and training-time mitigation recommendations. |
+| **10. Test Modules** | Unit tests under `tests/` for ingestion, preprocess, features, validation, database, and DAG; pytest; edge cases covered. |
+| **11. Reproducibility** | `SETUP_AND_RUN.md` provides setup and run instructions so the pipeline can be replicated on another machine. |
+| **12. Error Handling and Logging** | Branching and error-email tasks in the DAG; try/except and validation reports; logs sufficient for troubleshooting. |
+
+---
+
 ## Pipeline Execution Order
 
 ```
@@ -53,7 +74,7 @@
 │      └── Validate feature calculations and ranges               │
 │                        ↓                                        │
 │  13. VERSION FEATURES (DVC Checkpoint #3)                       │
-│      └── dvc add data/validated/                                │
+│      └── dvc add data/features/ (features.dvc)                 │
 │                        ↓                                        │
 │  14. LOAD TO DATABASE                                           │
 │      ├── PostgreSQL (financial, product, review data)           │
@@ -135,91 +156,63 @@ Establish the foundational project structure, dependencies, and development envi
 
 ### Steps
 
-1. **Create folder structure** following the required format:
+1. **Create folder structure** following the required format (actual implementation layout):
    ```
    SavVio/
    ├── data-pipeline/
-   │   ├── dags/              # Airflow DAG definitions
-   │   ├── data/
-   │   │   ├── raw/           # Raw financial, product, & review data
-   │   │   │   ├── financial.csv
-   │   │   │   ├── products.jsonl
-   │   │   │   ├── reviews.jsonl
-   │   │   │   └── .gitignore
-   │   │   ├── processed/     # Cleaned & transformed data
-   │   │   │   ├── financial_processed.csv
-   │   │   │   ├── products_processed.csv
-   │   │   │   ├── reviews_processed.csv
-   │   │   │   └── .gitignore
-   │   │   └── validated/     # Feature-engineered data
-   │   │       ├── features.csv
-   │   │       └── .gitignore
-   │   ├── scripts/
-   │   │   ├── ingest/        # Data ingestion modules
-   │   │   │   ├── __init__.py
-   │   │   │   ├── api_loader.py
-   │   │   │   ├── gcs_loader.py
-   │   │   │   ├── config.py
-   │   │   │   ├── financial.py
-   │   │   │   ├── product.py
-   │   │   │   ├── review.py
-   │   │   │   ├── utils.py
-   │   │   │   └── run_ingestion.py
-   │   │   ├── validate/      # Validation modules
-   │   │   │   ├── __init__.py
-   │   │   │   ├── raw_validator.py
-   │   │   │   ├── processed_validator.py
-   │   │   │   ├── feature_validator.py
-   │   │   │   ├── schemas/
-   │   │   │   │   ├── financial_schema.json
-   │   │   │   │   ├── product_schema.json
-   │   │   │   │   └── review_schema.json
-   │   │   │   └── run_validation.py
-   │   │   ├── preprocess/    # Preprocessing modules
-   │   │   │   ├── __init__.py
-   │   │   │   ├── financial.py
-   │   │   │   ├── product.py
-   │   │   │   ├── review.py
-   │   │   │   ├── utils.py
-   │   │   │   └── run_preprocessing.py
-   │   │   ├── anomaly/       # Anomaly detection modules
-   │   │   │   ├── __init__.py
-   │   │   │   ├── detectors.py
-   │   │   │   ├── config.yaml
-   │   │   │   └── run_anomaly_detection.py
-   │   │   ├── features/      # Feature engineering modules
-   │   │   │   ├── __init__.py
-   │   │   │   ├── financial_features.py
-   │   │   │   ├── affordability_features.py
-   │   │   │   ├── review_features.py
-   │   │   │   ├── utils.py
-   │   │   │   └── run_features.py
-   │   │   ├── bias/          # Bias detection modules
-   │   │   │   ├── __init__.py
-   │   │   │   ├── slicing.py
-   │   │   │   ├── analysis.py
-   │   │   │   └── run_bias_analysis.py
-   │   │   └── database/      # Database loading modules
-   │   │       ├── __init__.py
-   │   │       ├── postgres_loader.py
-   │   │       ├── vector_loader.py
-   │   │       ├── models.py
-   │   │       ├── utils.py
-   │   │       └── run_db_load.py
-   │   ├── tests/             # Unit tests
-   │   │   ├── test_ingestion.py
-   │   │   ├── test_validation.py
-   │   │   ├── test_preprocessing.py
-   │   │   ├── test_features.py
-   │   │   ├── test_anomaly.py
-   │   │   ├── test_bias.py
-   │   │   ├── test_database.py
-   │   │   └── conftest.py
-   │   ├── logs/              # Pipeline execution logs
-   │   ├── config/            # Configuration files
-   │   ├── docs/              # Documentation
-   │   ├── dvc.yaml           # DVC pipeline definition
-   │   └── README.md          # Pipeline documentation
+   │   ├── README.md              # This file
+   │   ├── SETUP_AND_RUN.md       # Setup and run instructions (reproducibility)
+   │   ├── data-requirements.txt  # Python dependencies (or use repo root requirements.txt)
+   │   ├── config/                # Configuration (e.g. database, GCP key path)
+   │   ├── logs/                  # Pipeline execution logs
+   │   ├── tests/                 # Unit tests (pytest)
+   │   │   ├── ingestion/
+   │   │   ├── preprocess/
+   │   │   ├── features/
+   │   │   ├── validation/
+   │   │   ├── database/
+   │   │   └── test_data_pipeline_airflow.py
+   │   └── dags/                  # Airflow DAG and pipeline code
+   │       ├── data_pipeline_airflow.py   # Main DAG definition
+   │       ├── data/
+   │       │   ├── raw/           # Raw data (financial_data.csv, product_data.jsonl, review_data.jsonl)
+   │       │   ├── processed/     # Preprocessed outputs
+   │       │   ├── features/      # Feature-engineered outputs
+   │       │   ├── raw.dvc        # DVC pointer for raw (versioned in Git)
+   │       │   ├── processed.dvc  # DVC pointer for processed
+   │       │   └── features.dvc   # DVC pointer for features
+   │       └── src/
+   │           ├── ingestion/     # Data acquisition (GCS, APIs)
+   │           │   ├── run_ingestion.py
+   │           │   ├── gcs_loader.py
+   │           │   └── ...
+   │           ├── preprocess/    # Cleaning and transformation
+   │           │   ├── run_preprocessing.py
+   │           │   ├── financial.py
+   │           │   ├── product.py
+   │           │   ├── review.py
+   │           │   └── ...
+   │           ├── features/      # Feature engineering
+   │           │   ├── run_features.py
+   │           │   ├── financial_features.py
+   │           │   ├── product_review_features.py
+   │           │   └── ...
+   │           ├── validation/   # Schema, stats, anomaly checks (Great Expectations)
+   │           │   ├── run_validation.py
+   │           │   ├── validate/
+   │           │   ├── anomaly/
+   │           │   └── ...
+   │           ├── database/      # PostgreSQL and pgvector load
+   │           │   ├── run_database.py
+   │           │   ├── upload_to_db.py
+   │           │   ├── vector_embed.py
+   │           │   └── ...
+   │           └── bias/          # Bias detection (data slicing)
+   │               ├── run_bias.py
+   │               ├── financial_bias.py
+   │               ├── product_bias.py
+   │               ├── review_bias.py
+   │               └── utils.py
    ```
 
 2. **Set up Python environment**
@@ -434,20 +427,20 @@ ingest_reviews = PythonOperator(
 ## Phase 4: Version Raw Data (DVC Checkpoint #1)
 
 ### Objective
-Version control the raw ingested data to ensure reproducibility and enable rollback if needed.
+Version control the raw ingested data to ensure reproducibility and enable rollback if needed. Data is versioned using DVC with separate `.dvc` pointer files for raw, processed, and features (history maintained in Git).
 
 ### Steps
 
-1. **Add raw data to DVC tracking**
+1. **Add raw data to DVC tracking** (run from `data-pipeline/dags/data`)
    ```bash
-   dvc add data/raw/financial.csv
-   dvc add data/raw/products.jsonl
-   dvc add data/raw/reviews.jsonl
+   cd data-pipeline/dags/data
+   dvc add raw
    ```
+   This creates `raw.dvc` (and updates `.gitignore` for the raw directory).
 
 2. **Commit .dvc files to Git**
    ```bash
-   git add data/raw/*.dvc data/raw/.gitignore
+   git add raw.dvc
    git commit -m "Add raw data v1.0"
    ```
 
@@ -762,16 +755,16 @@ Version control the processed data to track transformations.
 
 ### Steps
 
-1. **Add processed data to DVC**
+1. **Add processed data to DVC** (run from `data-pipeline/dags/data`)
    ```bash
-   dvc add data/processed/financial_processed.csv
-   dvc add data/processed/products_processed.csv
-   dvc add data/processed/reviews_processed.csv
+   cd data-pipeline/dags/data
+   dvc add processed
    ```
+   This creates/updates `processed.dvc`.
 
 2. **Commit and push**
    ```bash
-   git add data/processed/*.dvc
+   git add processed.dvc
    git commit -m "Add processed data v1.0"
    dvc push
    ```
@@ -901,27 +894,24 @@ Version control the feature-engineered data for reproducibility.
 
 ### Steps
 
-1. **Add features to DVC**
+1. **Add features to DVC** (run from `data-pipeline/dags/data`)
    ```bash
-   dvc add data/features/financial_featured.csv
-   dvc add data/features/product_rating_variance.csv
+   cd data-pipeline/dags/data
+   dvc add features
    ```
+   This creates/updates `features.dvc`.
 
 2. **Commit and push**
    ```bash
-   git add data/features/*.dvc
+   git add features.dvc
    git commit -m "Add features v1.0"
    dvc push
    ```
 
-3. **Tag the version**
+3. **Tag the version** (optional)
    ```bash
    git tag -a "data-features-v1.0" -m "Feature-engineered data"
    ```
-
-4. **Update dvc.yaml**
-   - Define complete pipeline stages
-   - Enable `dvc repro` for reproduction
 
 ### Why Version Here?
 - Ties financial health features to model training versions
@@ -1196,8 +1186,137 @@ Each data track is analyzed independently because they represent fundamentally d
    - Document category gaps and their impact on recommendations
 
 5. **Document analysis**
-   - `docs/bias_analysis_report.md`
-   - Include: slice counts, distribution comparisons, identified gaps, mitigation steps taken, trade-offs made
+   - The following subsection summarizes slices used, bias found, and mitigation strategies (aligned with the team’s Bias Detection document). Raw datasets are not modified; mitigation is applied at **model training time only**.
+
+---
+
+### Bias Detection Report (Phase 15 Summary)
+
+This section describes the **slices used**, **bias found**, and **mitigation strategies** from representation bias analysis across Financial (17 columns), Product (10 columns), and Review (8 columns) datasets. The objective is to identify underrepresented high-risk financial groups and high-uncertainty product/review slices that could skew downstream affordability and recommendation models.
+
+#### Slices Used for Bias Detection
+
+**Financial (domain-informed risk bands)**
+
+| Dimension | Bands / Logic | Threshold (flagged if) |
+|-----------|----------------|-------------------------|
+| Discretionary income | Negative (&lt;0), Tight (0–1000), Comfortable (&gt;1000) | — |
+| Debt-to-income (DTI) | Safe (&lt;0.2), Warning (0.2–0.4), Risky (&gt;0.4) | Warning &lt;10% |
+| Savings-to-income | Fragile (&lt;0.25), Moderate (0.25–1.0), Strong (&gt;1.0) | Fragile &lt;10% |
+| Monthly expense burden | Comfortable (&lt;0.5), Tight (0.5–0.8), Overstretched (&gt;0.8) | — |
+| Emergency fund months | Critical (&lt;1), Fragile (1–3), Stable (&gt;3) | — |
+| Income / expenses / loan amount / interest / term / credit score | Low, Medium, High (quantiles or domain bins) | High-risk band &lt;10% |
+| Employment status | Employed, Self-employed, Unemployed, Student | Category &lt;10% |
+| Region | Geographic categories | — |
+| user_id | Uniqueness check | Uniqueness &lt;95% |
+| savings_balance | Near-zero, Low, Moderate, High | Near-zero &lt;10% |
+
+**Product (uncertainty and coverage bands)**
+
+| Dimension | Bands / Logic | Threshold (flagged if) |
+|-----------|----------------|-------------------------|
+| Price | Budget, Mid-range, Premium | — |
+| Average rating | Low, Medium, High | — |
+| rating_number | Low / Medium / High confidence (review count) | — |
+| rating_variance | Consensus, Mixed, Polarized, Single-review proxy (0.0) | — |
+| Description / features | Length or count bands (0, 1–2, 3–5, 6+) | — |
+| details (Brand) | Rare-brand detection | Rare brands &lt;5% |
+| category | Long-tail category coverage | Category &lt;5% |
+| product_id | Uniqueness | — |
+
+**Review (signal and coverage bands)**
+
+| Dimension | Bands / Logic | Threshold (flagged if) |
+|-----------|----------------|-------------------------|
+| rating | Negative, Neutral, Positive | Neutral or minority &lt;5% |
+| verified_purchase | True, False | Minority class &lt;5% |
+| helpful_vote | None, Low, Medium, High | High &lt;5% |
+| review_title / review_text | Short, Medium, Long, Empty | — |
+| user_id | Uniqueness | Uniqueness &lt;95% |
+| Reviews per product | 1, 2–5, 6–20, 21+ (cold-start) | — |
+
+---
+
+#### Bias Found (Phase 15 Outputs)
+
+**Financial (flagged)**
+
+| Column / slice | Finding | Risk |
+|----------------|---------|------|
+| **savings_balance** | Near-zero savings severely underrepresented (~0%) | Financial vulnerability under-captured; model may miss users most in need of Red Light. |
+| **employment_status** | Unemployed (9.93%) and Student (9.91%) slightly below 10% | Financially vulnerable groups underrepresented. |
+| **debt_to_income_ratio** | Warning band (0.2–0.4) = 3.48% | Mid-risk users underrepresented; model may learn binary Safe vs Risky. |
+| **savings_to_income_ratio** | Fragile (&lt;0.25) ~1.5% | Long-term vulnerability underrepresented. |
+| **emergency_fund_months** | Critical (&lt;1 month) and Fragile (1–3 months) highly underrepresented | Emergency-risk users rare; classifier may rarely predict Red in real distress cases. |
+
+**Review (flagged)**
+
+| Column / slice | Finding | Risk |
+|----------------|---------|------|
+| **user_id** | Uniqueness ~83% | Repeat reviewers may dominate signals. |
+| **rating** | Neutral = 4.89% | Middle sentiment underrepresented. |
+| **verified_purchase** | False ~4.16% | Non-verified reviews underrepresented. |
+| **helpful_vote** | High = 1.5% | High-signal reviews scarce. |
+
+**Product (flagged)**
+
+| Column / slice | Finding | Risk |
+|----------------|---------|------|
+| **category** | Many long-tail categories &lt;5% | Coverage skew toward popular categories; category bias. |
+| **details (Brand)** | Many rare brands &lt;5% | Model may overfit to dominant brands. |
+| **Low-confidence products** | High share of single-review / low-count items (e.g. rating_variance == 0) | Cold-start risk; uncertainty at serving time. |
+
+---
+
+#### Mitigation Strategies (Training-Time Only)
+
+Mitigation is applied **only at model training time**. The raw dataset is not modified.
+
+**Financial**
+
+- **DTI Warning band:** Oversample Warning (0.2–0.4) during training; ensure moderate-debt users are sufficiently represented in the training split.
+- **Savings-to-income (Fragile):** Oversample Fragile users; ensure minimum exposure of low-savings profiles; if needed, controlled synthetic low-savings profiles (clearly labeled).
+- **Emergency fund (Critical / Fragile):** Oversample Critical and Fragile runway users; stress-test classifier on &lt;3 month runway users; optionally controlled synthetic emergency profiles. **Highest priority mitigation.**
+- **Employment (Unemployed / Student):** Stratified sampling by employment_status so vulnerable groups are represented.
+
+**Review**
+
+- **Rating (Neutral):** Stratified sampling by sentiment class (Negative / Neutral / Positive).
+- **verified_purchase (False):** Oversample non-verified reviews during training.
+- **helpful_vote (High):** Weight high-helpfulness reviews more during training.
+- **user_id (repeat reviewers):** User-level deduplication or per-user weighting to avoid repeat reviewers dominating.
+
+**Product**
+
+- **Category (long-tail):** Stratified sampling or category grouping to reduce bias toward popular categories.
+- **Brand (rare):** Group rare brands or apply brand smoothing to avoid overfitting to major brands.
+- **Low-confidence (single-review):** Flag as low-confidence at serving time; down-weight in recommendation logic; optionally require minimum review count.
+
+**Cross-cutting**
+
+- Stratified sampling across all flagged slices where applicable.
+- Controlled oversampling of underrepresented high-risk slices (with caps to avoid distortion).
+- Evaluation stress tests on vulnerable slices (low savings, DTI Warning, cold-start products).
+- No synthetic data in raw pipeline unless model performance on vulnerable slices remains poor after oversampling.
+
+---
+
+#### Trade-offs and Design Rationale
+
+| Choice | Rationale |
+|--------|-----------|
+| **No raw data mutation** | Preserves real-world distributions and avoids synthetic artifacts in source-of-truth datasets. |
+| **Mitigation at training time only** | Keeps the data pipeline deterministic and auditable; fairness controls are applied where models are fit. |
+| **Oversampling with caps** | Reduces underrepresentation while limiting overfitting to rare slices; validated via cross-validation. |
+| **Long-tail / category grouping** | Improves fairness across categories but may increase variance; addressed with grouping and smoothing. |
+
+**Limitations and next steps**
+
+- Incorporate fairness-aware sampling directly into model training pipelines (Phase 3).
+- Add per-slice performance metrics (e.g. recall on vulnerable users).
+- Consider post-training calibration and threshold tuning for high-risk (Red) decisions.
+
+---
 
 ### Tools & Alternatives
 
@@ -1235,182 +1354,122 @@ Once the Deterministic Financial Logic Engine is built, a separate bias analysis
 This analysis requires the full decision pipeline and belongs in the model development phase, not the data pipeline.
 
 ---
-
 ## Phase 16: Pipeline Orchestration (Airflow DAGs)
 
 ### Objective
-Structure the entire pipeline using Airflow DAGs with logical task connections.
+Structure the entire pipeline using Apache Airflow DAGs with conditional branching to manage complex error-handling logic, parallel processing, and dependencies.
 
-### Steps
+### Implementation Setup
 
-1. **Design DAG structure**
+1. **Architecture**
+   - We run a containerized Airflow environment via `docker-compose.yaml` (including PostgreSQL and Redis backends).
+   - Core DAG file: `dags/data_pipeline_airflow.py`
 
+2. **Implemented DAG Structure**
+   The DAG achieves maximum concurrency while respecting data dependencies and executing specific validation branches to catch failures. Here is the implemented structure:
    ```
-   [ingest_financial] ─┬─→ [version_raw] → [gen_schema] → [validate_raw]
-   [ingest_products]  ─┤                         ↓
-   [ingest_reviews]   ─┘                  [detect_anomalies]
-                                                 ↓
-                                          [preprocess]
-                                                 ↓
-                                        [validate_processed]
-                                                 ↓
-                                        [version_processed]
-                                                 ↓
-                                        [engineer_features]
-                                                 ↓
-                                        [validate_features]
-                                                 ↓
-                                         [version_features]
-                                                 ↓
-                                          [load_postgres]
-                                                 ↓
-                                         [generate_embeddings]
-                                                 ↓
-                                           [detect_bias]
-                                                 ↓
-                                             [complete]
+   [ingest_financial] ───────┐
+   [ingest_product]   ───────┼──> [check_ingestion] ──(failed?)──> [email_error_at_ingestion]
+   [ingest_review]    ───────┘          │ (success)
+                                        ▼  
+   [validate_raw_financial] ─┐
+   [validate_raw_product]   ─┼──> [check_raw_validation] ──(failed?)──> [email_error_error_raw_validation]
+   [validate_raw_review]    ─┘          │ 
+                                        ▼  
+   [detect_anomalies_*]     ────> [check_anomalies] ──(failed?)──> [email_error_at_anomalies]
+                                        │
+                                        ▼
+   [preprocess_financial] ───       (parallel)       
+   [preprocess_product]   ───> [preprocess_review]
+                                        │
+                                        ▼
+   [check_preprocessing] ──(failed?)──> [email_error_at_preprocessing]
+                                        │
+                                        ▼
+   [validate_processed_*] ──> [check_processed_validation] ──(failed?)──> [email_error_at_processed_validation]
+                                        │
+                                        ▼
+   [feature_financial]    ───┐
+   [feature_reviews]      ───┴──> [check_feature_engineering] ──(failed?)──> [email_error_at_feature_engineering]
+                                        │
+                                        ▼
+   [validate_featured]    ──────> [check_featured_validation] ──(failed?)──> [email_error_at_featured_validation]
+                                        │
+                                        ▼
+   [setup_database] ──> [load_financial, load_product] ──> [load_review] ──> [generate_load_embeddings]
+                                        │
+                                        ▼
+   [check_db_loading] ──(failed?)──> [email_error_at_DB_loading]
+                                        │(success)
+                                        ▼
+   [email_pipeline_success] ──> [pipeline_sentinel]
    ```
 
-2. **Create DAG definition**
-   - Location: `dags/savvio_data_pipeline.py`
-   - Schedule: `@daily` or `None` for manual
-
-3. **Define tasks**
-   - `PythonOperator` for processing
-   - `BashOperator` for DVC
-   - `EmailOperator` for alerts
-
-4. **Set dependencies and error handling**
-
-### Tools & Alternatives
-
-| Tool | Purpose | Alternative |
-|------|---------|-------------|
-| Apache Airflow | Orchestration | Prefect, Dagster |
-| PythonOperator | Python tasks | @task decorator |
-| BashOperator | Shell commands | — |
+3. **Task Implementation**
+   - The DAG tasks primarily map directly to `src/` modules using `PythonOperator`.
+   - Error detection is implemented via `BranchPythonOperator` blocks (e.g., `make_branch_check(...)`) that evaluate upstream task states and trigger `EmailOperator` tasks on failure.
 
 ---
 
 ## Phase 17: Testing
 
 ### Objective
-Write comprehensive unit tests for each pipeline component.
+Provide comprehensive coverage of all data modules and tasks before pipeline deployment using parameterized test files and robust service mocks.
 
-### Steps
+### Implementation
 
-1. **Create test structure**
+1. **Test Structure**
+   The `pytest` test suite is fully modularized and located under `tests/`. Tests have been separated into logic boundaries:
    ```
    tests/
-   ├── test_ingestion.py
-   ├── test_validation.py
-   ├── test_preprocessing.py
-   ├── test_features.py
-   ├── test_anomaly.py
-   ├── test_bias.py
-   ├── test_database.py
-   └── conftest.py
+   ├── ingestion/
+   │   ├── __init__.py
+   │   └── test_gcs_loader.py       # Testing GCP blob mocks
+   ├── validation/
+   │   ├── test_raw_validator.py
+   │   └── ...
+   ├── test_data_pipeline_airflow.py # DAG-level testing and operator mocking
+   └── ...
    ```
 
-2. **Test categories**
+2. **Testing Standards Applied**
+   - **Mocking Extraneous Services**: Stubs are aggressively used (e.g., `_stub` in `test_data_pipeline_airflow.py` and `_stub_google` in `test_gcs_loader.py`) to effectively isolate module tests from requiring active GCP or Airflow metadata connections.
+   - **Format Standard:** All test files include module docstrings, section dividers, and structural comments.
 
-   | Component | Test Cases |
-   |-----------|------------|
-   | Ingestion | File not found, empty file, success |
-   | Validation | Invalid types, nulls, range violations |
-   | Preprocessing | Missing values, transformations, review text |
-   | Features | Edge cases, calculations, review aggregations |
-   | Anomaly | Outlier detection, thresholds |
-   | Bias | Slice distributions, fairness metrics |
-   | Database | Connection, load, embeddings |
-
-3. **Run in CI/CD**
-   - pytest in GitHub Actions
-   - Coverage reporting
-
-### Tools & Alternatives
-
-| Tool | Purpose | Alternative |
-|------|---------|-------------|
-| pytest | Testing | unittest |
-| pytest-cov | Coverage | coverage.py |
-| unittest.mock | Mocking | pytest-mock |
+3. **Running the Tests**
+   - `pytest tests/ -v`
 
 ---
 
 ## Phase 18: Tracking, Logging & Monitoring
 
 ### Objective
-Implement logging and monitoring for pipeline observability.
+Ensure data pipeline execution observability.
 
-### Steps
+### Implementation
 
-1. **Python logging**
-   - Configure in each module
-   - Levels: DEBUG, INFO, WARNING, ERROR
-   - Format: `[timestamp] [level] [module] message`
-
-2. **Track metrics**
-   - Records ingested (financial, products, reviews)
-   - Validation pass rate
-   - Processing time
-   - Anomalies detected
-
-3. **Monitoring**
-   - Airflow UI for tasks
-   - GCP Cloud Logging for production
-
-4. **Alerts**
-   - Task failures → Email
-   - Critical issues → Slack
-
-### Tools & Alternatives
-
-| Tool | Purpose | Alternative |
-|------|---------|-------------|
-| Python logging | App logs | loguru |
-| Airflow UI | Task monitoring | — |
-| GCP Cloud Logging | Centralized logs | ELK Stack |
-| Grafana | Dashboards | GCP Monitoring |
+1. **Module-wide Logging**
+   - `src/utils.py` contains shared `logging` config that formats logs by `[timestamp] [level] [module_name]`.
+   - Every individual script explicitly initializes its logger instance globally using `logger = logging.getLogger(__name__)`. 
+   
+2. **Airflow Alerts**
+   - If any core task fails, branching conditions inside Airflow dynamically evaluate the task context state and trigger an `EmailOperator` (like `email_error_at_preprocessing`) notifying pipeline maintainers precisely which phase failed.
 
 ---
 
 ## Phase 19: Pipeline Optimization
 
 ### Objective
-Identify and resolve bottlenecks to optimize performance.
+Diagnose runtime bottlenecks and pipeline faults.
 
-### Steps
+### Implementation
 
-1. **Analyze with Airflow Gantt chart**
-   - Identify slow tasks
-   - Find parallelization opportunities
+1. **DAG Race Condition Mitigation**
+   - *Problem:* A race condition dropped merged data due to overlapping run times in `preprocess_product` and `preprocess_review`.
+   - *Solution:* Airflow dependencies were explicitly enforced for these two segments `preprocess_product >> preprocess_review` to ensure product mapping succeeds before dependency resolution.
 
-2. **Common bottlenecks**
+2. **DVC (Data Version Control) Checkpoints**
+   - Intermediary DVC markers allow the pipeline data to be cached at raw, processed, and featured states without repeating slow upstream execution times. Data commits are persisted in GCS.
 
-   | Bottleneck | Solution |
-   |------------|----------|
-   | Data download | Cache, retry logic |
-   | JSONL parsing & flattening | Use Polars, batch processing |
-   | Large file processing | Chunking, Polars |
-   | Review aggregation | Batch processing |
-   | Embedding generation | Batch processing |
-   | DVC push | Async, compression |
-
-3. **Implement optimizations**
-   - Parallelize independent tasks (financial, products, reviews)
-   - Switch to Polars if Pandas slow
-   - Batch embedding generation
-   - Cache intermediate results
-
-4. **Measure improvements**
-   - Before/after comparisons
-   - Document gains
-
-### Tools & Alternatives
-
-| Tool | Purpose | Alternative |
-|------|---------|-------------|
-| Airflow Gantt | Visual analysis | — |
-| Polars | Fast processing | Dask (distributed) |
-| cProfile | Code profiling | line_profiler |
+3. **Orchestration Concurrency**
+   - Tasks like `ingest_financial`, `ingest_product`, and `ingest_review` execute totally asynchronously without blocking execution threads since they exist independently of one another.
