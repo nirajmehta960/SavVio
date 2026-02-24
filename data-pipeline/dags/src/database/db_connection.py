@@ -101,7 +101,8 @@ def ensure_pgvector(engine):
 if __name__ == "__main__":
     import argparse
 
-    logging.basicConfig(level=logging.INFO)
+    from src.utils import setup_logging
+    setup_logging()
 
     parser = argparse.ArgumentParser(description="Test DB connection")
     parser.add_argument("--env", default="dev", choices=["dev", "prod"])

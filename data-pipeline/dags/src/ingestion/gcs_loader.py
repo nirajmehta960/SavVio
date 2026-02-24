@@ -14,10 +14,8 @@ from google.cloud import storage
 from google.oauth2 import service_account
 
 # Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='[%(asctime)s] [%(levelname)s] [%(name)s] %(message)s'
-)
+from src.utils import setup_logging
+setup_logging()
 logger = logging.getLogger(__name__)
 
 
