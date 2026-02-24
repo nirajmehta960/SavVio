@@ -22,6 +22,7 @@ DAGS_SRC = os.path.join(PROJECT_ROOT, "dags", "src")
 # ---------------------------------------------------------------------------
 _source_dirs = [
     PROJECT_ROOT,
+    os.path.join(PROJECT_ROOT, "dags"),
     DAGS_SRC,
     os.path.join(DAGS_SRC, "bias"),
     os.path.join(DAGS_SRC, "database"),
@@ -51,3 +52,12 @@ _utils.ensure_output_dir = lambda path: os.makedirs(
     os.path.dirname(path), exist_ok=True
 )
 sys.modules["utils"] = _utils
+
+_src_utils = sys.modules.get("src.utils", types.ModuleType("src.utils"))
+_src_utils.setup_logging = _utils.setup_logging
+sys.modules["src.utils"] = _src_utils
+
+_src = sys.modules.get("src", types.ModuleType("src"))
+_src.utils = _src_utils
+sys.modules["src"] = _src
+

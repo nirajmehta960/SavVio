@@ -5,9 +5,7 @@ import os
 LOG_FORMAT = "[%(asctime)s] [%(levelname)s] [%(name)s] %(message)s"
 
 
-def setup_logging(level: int = logging.INFO) -> None:
-    """Configure logging for feature scripts."""
-    logging.basicConfig(level=level, format=LOG_FORMAT, datefmt="%Y-%m-%d %H:%M:%S")
+from src.utils import setup_logging
 
 
 def get_processed_path(filename: str, base_dir: str = None) -> str:
