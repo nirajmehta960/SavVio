@@ -1,18 +1,25 @@
-# tests/database/test_vector_embed.py
-import os, sys, json, types, importlib
+"""
+Tests for Load to Database — vector_embed.py.
+
+Covers embedding generation and storage for products and reviews using
+sentence-transformers and pgvector. Tests: _flatten_details, build_product_text,
+build_review_text, _read_file, generate_embeddings, store_product_embeddings,
+store_review_embeddings, embed_products, embed_reviews, run_embed.
+"""
+import os
+import sys
+import json
+import types
+import importlib
 from unittest.mock import MagicMock, patch
 import numpy as np
 import pandas as pd
 import pytest
 
+# ---------------------------------------------------------------------------
+# Path constants  (sys.path set up by conftest.py)
+# ---------------------------------------------------------------------------
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
-sys.path.insert(0, PROJECT_ROOT)
-for _p in [
-    os.path.join(PROJECT_ROOT, "dags", "src", "database"),
-    os.path.join(PROJECT_ROOT, "dags", "src"),
-]:
-    if os.path.isdir(_p) and _p not in sys.path:
-        sys.path.insert(0, _p)
 
 # --- stubs ---
 if "db_config" not in sys.modules:
@@ -43,11 +50,6 @@ M = importlib.util.module_from_spec(_spec)
 sys.modules["vector_embed"] = M
 _spec.loader.exec_module(M)
 
-import pytest
-import json
-import numpy as np
-import pandas as pd
-from unittest.mock import MagicMock, patch
 
 # =============================================================================
 # 1) _flatten_details tests
@@ -152,13 +154,13 @@ def test_store_product_embeddings_executes_db_calls():
     engine, conn = _mock_engine()
     dim = getattr(M, "EMBEDDING_DIM", 384)
     M.store_product_embeddings(engine, ["p1","p2","p3"], np.zeros((3,dim), dtype=np.float32))
-    assert conn.execute.call_count >= 1
+    assert conn.execute.call_count == 3
 
 def test_store_review_embeddings_executes_db_calls():
     engine, conn = _mock_engine()
     dim = getattr(M, "EMBEDDING_DIM", 384)
     M.store_review_embeddings(engine, ["p1","p2"], ["u1","u2"], np.zeros((2,dim), dtype=np.float32))
-    assert conn.execute.call_count >= 1
+    assert conn.execute.call_count == 2
 
 # =============================================================================
 # 7) embed_products / embed_reviews tests
@@ -216,3 +218,38 @@ def test_embed_reviews_filters_and_stores(tmp_path):
         mg.assert_called_once()
         assert ms.call_args[0][1] == ["p1"]
         assert ms.call_args[0][2] == ["u1"]
+
+
+# =============================================================================
+# 8) run_embed (end-to-end orchestrator)
+# =============================================================================
+
+def test_run_embed_products_only():
+    with patch.object(M, "get_engine") as mock_ge, \
+         patch.object(M, "ensure_pgvector") as mock_pgv, \
+         patch.object(M, "create_tables") as mock_ct, \
+         patch.object(M, "_ensure_embedding_tables") as mock_et, \
+         patch.object(M, "load_model") as mock_lm, \
+         patch.object(M, "embed_products", return_value=5) as mock_ep, \
+         patch.object(M, "embed_reviews") as mock_er:
+        result = M.run_embed("/products.csv", reviews_path=None, env="dev")
+    mock_ge.assert_called_once_with("dev")
+    mock_pgv.assert_called_once()
+    mock_ct.assert_called_once()
+    mock_et.assert_called_once()
+    mock_lm.assert_called_once()
+    mock_ep.assert_called_once()
+    mock_er.assert_not_called()
+    assert result == {"products_embedded": 5, "reviews_embedded": 0}
+
+
+def test_run_embed_with_reviews():
+    with patch.object(M, "get_engine"), \
+         patch.object(M, "ensure_pgvector"), \
+         patch.object(M, "create_tables"), \
+         patch.object(M, "_ensure_embedding_tables"), \
+         patch.object(M, "load_model"), \
+         patch.object(M, "embed_products", return_value=3), \
+         patch.object(M, "embed_reviews", return_value=7):
+        result = M.run_embed("/products.csv", "/reviews.csv", env="prod")
+    assert result == {"products_embedded": 3, "reviews_embedded": 7}
