@@ -1,8 +1,13 @@
-# tests/features/test_product_review_features.py
+"""
+Tests for Feature Engineering — product_review_features.py.
+
+Covers compute_rating_variance (per-product std dev from individual reviews)
+and the run_review_features pipeline (input validation, variance merge onto
+products, review copy pass-through, NaN-free output).
+"""
 import os
 import sys
 import json
-import types
 import importlib.util
 
 import numpy as np
@@ -10,26 +15,9 @@ import pandas as pd
 import pytest
 
 # ---------------------------------------------------------------------------
-# Path setup
+# Path constants  (sys.path and utils stub set up by conftest.py)
 # ---------------------------------------------------------------------------
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
-sys.path.insert(0, PROJECT_ROOT)
-
-for _p in [
-    os.path.join(PROJECT_ROOT, "dags", "src", "features"),
-    os.path.join(PROJECT_ROOT, "dags", "src"),
-]:
-    if os.path.isdir(_p) and _p not in sys.path:
-        sys.path.insert(0, _p)
-
-# ---------------------------------------------------------------------------
-# Stub utils
-# ---------------------------------------------------------------------------
-if "utils" not in sys.modules:
-    _utils = types.ModuleType("utils")
-    _utils.setup_logging = lambda *a, **kw: None
-    _utils.ensure_output_dir = lambda path: os.makedirs(os.path.dirname(path), exist_ok=True)
-    sys.modules["utils"] = _utils
 
 # ---------------------------------------------------------------------------
 # Load module under test
@@ -141,7 +129,7 @@ def test_run_review_features_missing_products_raises(tmp_path):
 # 3) run_review_features — output files
 # =============================================================================
 
-def test_run_review_features_creates_product_output(tmp_path):
+def test_run_review_features_creates_output_files(tmp_path):
     rev = tmp_path / "rev.jsonl"
     prod = tmp_path / "prod.jsonl"
     _write_jsonl(rev,  [{"product_id": "p1", "rating": 4},
@@ -154,18 +142,6 @@ def test_run_review_features_creates_product_output(tmp_path):
         str(tmp_path / "rev_out.jsonl"),
     )
     assert (tmp_path / "prod_out.jsonl").exists()
-
-def test_run_review_features_creates_review_output(tmp_path):
-    rev = tmp_path / "rev.jsonl"
-    prod = tmp_path / "prod.jsonl"
-    _write_jsonl(rev,  [{"product_id": "p1", "rating": 4}])
-    _write_jsonl(prod, [{"product_id": "p1", "product_name": "Widget", "price": 10}])
-
-    M.run_review_features(
-        str(rev), str(prod),
-        str(tmp_path / "prod_out.jsonl"),
-        str(tmp_path / "rev_out.jsonl"),
-    )
     assert (tmp_path / "rev_out.jsonl").exists()
 
 def test_run_review_features_review_output_is_copy(tmp_path):

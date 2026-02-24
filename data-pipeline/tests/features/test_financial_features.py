@@ -1,7 +1,13 @@
-# tests/features/test_financial_features.py
+"""
+Tests for Feature Engineering — financial_features.py.
+
+Covers per-user financial ratio computations: discretionary_income,
+debt_to_income_ratio, saving_to_income_ratio, monthly_expense_burden_ratio,
+emergency_fund_months. Also tests run_financial_features pipeline including
+zero-division handling, inf replacement, and output CSV creation.
+"""
 import os
 import sys
-import types
 import importlib.util
 from unittest.mock import MagicMock, patch
 
@@ -10,25 +16,9 @@ import pandas as pd
 import pytest
 
 # ---------------------------------------------------------------------------
-# Path setup
+# Path constants  (sys.path and utils stub set up by conftest.py)
 # ---------------------------------------------------------------------------
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
-sys.path.insert(0, PROJECT_ROOT)
-
-DAGS_SRC = os.path.join(PROJECT_ROOT, "dags", "src")
-FEATURES_DIR = os.path.join(PROJECT_ROOT, "dags", "src", "features")
-for _p in (DAGS_SRC, FEATURES_DIR):
-    if os.path.isdir(_p) and _p not in sys.path:
-        sys.path.insert(0, _p)
-
-# ---------------------------------------------------------------------------
-# Stub dependencies at module level
-# ---------------------------------------------------------------------------
-if "utils" not in sys.modules:
-    _utils = types.ModuleType("utils")
-    _utils.setup_logging = lambda *a, **kw: None
-    _utils.ensure_output_dir = lambda path: os.makedirs(os.path.dirname(path), exist_ok=True)
-    sys.modules["utils"] = _utils
 
 # ---------------------------------------------------------------------------
 # Load module under test
