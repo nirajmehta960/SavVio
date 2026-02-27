@@ -1,4 +1,9 @@
-# tests/features/test_run_features.py
+"""
+Tests for Feature Engineering — run_features.py orchestrator.
+
+Covers the main() CLI (skip flags, exception handling) and the Airflow task
+wrappers: feature_financial_task, feature_review_task.
+"""
 import os
 import sys
 import types
@@ -8,30 +13,25 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 # ---------------------------------------------------------------------------
-# Path setup
+# Path constants  (sys.path set up by conftest.py)
 # ---------------------------------------------------------------------------
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
-sys.path.insert(0, PROJECT_ROOT)
-
-for _p in [
-    os.path.join(PROJECT_ROOT, "dags", "src", "features"),
-    os.path.join(PROJECT_ROOT, "dags", "src"),
-]:
-    if os.path.isdir(_p) and _p not in sys.path:
-        sys.path.insert(0, _p)
 
 # ---------------------------------------------------------------------------
 # Stub dependencies before loading module
 # ---------------------------------------------------------------------------
+_utils = sys.modules.get("utils", types.ModuleType("utils"))
+_utils.setup_logging = lambda *a, **kw: None
+sys.modules["utils"] = _utils
+
 for _name, _attrs in {
-    "utils": {"setup_logging": lambda *a, **kw: None, "ensure_output_dir": lambda p: None},
     "financial_features": {"run_financial_features": MagicMock()},
     "product_review_features": {"run_review_features": MagicMock()},
 }.items():
     m = types.ModuleType(_name)
     for k, v in _attrs.items():
         setattr(m, k, v)
-    sys.modules[_name] = m  # 強制覆蓋，不用 if not in
+    sys.modules[_name] = m
 
 # ---------------------------------------------------------------------------
 # Load module under test

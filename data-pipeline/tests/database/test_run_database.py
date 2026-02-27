@@ -1,15 +1,18 @@
+"""
+Tests for Load to Database — run_database.py orchestrator.
+
+Covers the Airflow task wrappers that drive the database loading pipeline:
+  _setup, setup_database_task, load_financial_task, load_products_task,
+  load_reviews_task, generate_and_load_embedding_task.
+"""
 import os
 import sys
 import types
 from unittest.mock import MagicMock, patch
 import pytest
 
+# sys.path set up by conftest.py
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"))
-DAGS_ROOT = os.path.join(PROJECT_ROOT, "dags")
-DB_DIR = os.path.join(DAGS_ROOT, "src", "database")
-sys.path.insert(0, PROJECT_ROOT)
-sys.path.insert(0, DAGS_ROOT)
-sys.path.insert(0, DB_DIR)
 
 def _install_stub_modules():
     upload_to_db = types.ModuleType("upload_to_db")
@@ -116,6 +119,43 @@ def test_load_reviews_task_positive(mock_setup, mock_load_reviews, tmp_path):
         engine,
         os.path.join(data_dir, "features/review_featured.jsonl"),
     )
+
+
+# =============================================================================
+# Tests for setup_database_task
+# =============================================================================
+
+@patch.object(orchestrator, "get_engine")
+def test_setup_database_task_drops_and_creates(mock_get_engine):
+    mock_engine = MagicMock(name="engine")
+    mock_get_engine.return_value = mock_engine
+    with patch("db_schema.drop_tables") as mock_drop, \
+         patch("db_schema.create_tables") as mock_create:
+        orchestrator.setup_database_task()
+    mock_get_engine.assert_called_once()
+    mock_drop.assert_called_once_with(mock_engine)
+    mock_create.assert_called_once_with(mock_engine)
+
+
+@patch.object(orchestrator, "get_engine")
+def test_setup_database_task_propagates_engine_failure(mock_get_engine):
+    mock_get_engine.side_effect = RuntimeError("no DB")
+    with pytest.raises(RuntimeError, match="no DB"):
+        orchestrator.setup_database_task()
+
+
+# =============================================================================
+# Tests for load_reviews_task negative case
+# =============================================================================
+
+@patch.object(orchestrator, "load_reviews")
+@patch.object(orchestrator, "_setup")
+def test_load_reviews_task_negative_loader_failure(mock_setup, mock_load_reviews, tmp_path):
+    data_dir, engine = _fake_setup(tmp_path)
+    mock_setup.return_value = (data_dir, engine)
+    mock_load_reviews.side_effect = ValueError("FK violation")
+    with pytest.raises(ValueError, match="FK violation"):
+        orchestrator.load_reviews_task()
 
 
 # =============================================================================

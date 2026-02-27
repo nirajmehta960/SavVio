@@ -1,4 +1,10 @@
-# tests/test_data_pipeline_airflow.py
+"""
+Tests for Pipeline Orchestration — Airflow DAG definition.
+
+Covers DAG structure validation: task existence, dependency ordering,
+operator types, and end-to-end graph connectivity for the SavVio data
+pipeline DAG.
+"""
 import os
 import sys
 import re
@@ -9,12 +15,9 @@ from unittest.mock import MagicMock
 import pytest
 
 # ---------------------------------------------------------------------------
-# Path setup
+# Path constants  (sys.path set up by conftest.py)
 # ---------------------------------------------------------------------------
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-DAGS_SRC = os.path.join(PROJECT_ROOT, "dags", "src")
-sys.path.insert(0, PROJECT_ROOT)
-sys.path.insert(0, DAGS_SRC)
 
 # ---------------------------------------------------------------------------
 # Stub helpers
@@ -24,6 +27,12 @@ def _stub(name, **attrs):
     for k, v in attrs.items():
         setattr(m, k, v)
     sys.modules.setdefault(name, m)
+    if "." in name:
+        parent_name = name.rsplit(".", 1)[0]
+        child_attr = name.rsplit(".", 1)[1]
+        parent = sys.modules.get(parent_name)
+        if parent is not None and not hasattr(parent, child_attr):
+            setattr(parent, child_attr, sys.modules[name])
     return m
 
 # ---------------------------------------------------------------------------
@@ -132,9 +141,6 @@ M = _load()
 # =============================================================================
 # 1) DAG object
 # =============================================================================
-
-def test_dag_exists():
-    assert hasattr(M, "dag")
 
 def test_dag_is_dag_instance():
     assert isinstance(M.dag, _DAG)
@@ -305,3 +311,68 @@ def test_make_branch_check_skips_on_skipped_upstream():
                return_value={"run_1": {"t1": "skipped"}}):
         result = fn(dag_run=mock_dag_run)
     assert result == []
+
+
+def test_make_branch_check_routes_to_failure_on_failed_state():
+    """If upstream task state is 'failed', should return failure_ids."""
+    from unittest.mock import patch
+    fn = M.make_branch_check(["t1"], ["next_task"], ["fail_task"])
+
+    mock_dag_run = MagicMock()
+    mock_dag_run.dag_id = "test_dag"
+    mock_dag_run.run_id = "run_1"
+
+    with patch("airflow.sdk.execution_time.task_runner.RuntimeTaskInstance.get_task_states",
+               return_value={"run_1": {"t1": "failed"}}):
+        result = fn(dag_run=mock_dag_run)
+    assert result == ["fail_task"]
+
+
+# =============================================================================
+# 11) _check_pipeline_complete
+# =============================================================================
+
+def test_check_pipeline_complete_success():
+    """Should not raise when success email task succeeded."""
+    from unittest.mock import patch
+    fn = M._check_pipeline_complete
+
+    mock_dag_run = MagicMock()
+    mock_dag_run.dag_id = "test_dag"
+    mock_dag_run.run_id = "run_1"
+
+    with patch("airflow.sdk.execution_time.task_runner.RuntimeTaskInstance.get_task_states",
+               return_value={"run_1": {"send_email_pipeline_success": "success"}}):
+        fn(dag_run=mock_dag_run)
+
+
+def test_check_pipeline_complete_raises_on_missing_success():
+    """Should raise AirflowException when success email task didn't succeed."""
+    from unittest.mock import patch
+    from airflow.exceptions import AirflowException
+    fn = M._check_pipeline_complete
+
+    mock_dag_run = MagicMock()
+    mock_dag_run.dag_id = "test_dag"
+    mock_dag_run.run_id = "run_1"
+
+    with patch("airflow.sdk.execution_time.task_runner.RuntimeTaskInstance.get_task_states",
+               return_value={"run_1": {"send_email_pipeline_success": "failed"}}):
+        with pytest.raises(AirflowException, match="did not complete successfully"):
+            fn(dag_run=mock_dag_run)
+
+
+def test_check_pipeline_complete_raises_on_api_error():
+    """Should raise AirflowException when get_task_states fails."""
+    from unittest.mock import patch
+    from airflow.exceptions import AirflowException
+    fn = M._check_pipeline_complete
+
+    mock_dag_run = MagicMock()
+    mock_dag_run.dag_id = "test_dag"
+    mock_dag_run.run_id = "run_1"
+
+    with patch("airflow.sdk.execution_time.task_runner.RuntimeTaskInstance.get_task_states",
+               side_effect=Exception("db down")):
+        with pytest.raises(AirflowException, match="Failed to query task states"):
+            fn(dag_run=mock_dag_run)

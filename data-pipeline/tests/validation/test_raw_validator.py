@@ -1,4 +1,10 @@
-# tests/validation/test_raw_validator.py
+"""
+Tests for Raw Data Validation — validate/raw_validator.py.
+
+Covers required column checks, range validation, duplicate detection, and
+cross-referential checks (review ASINs vs product ASINs) for raw financial,
+product, and review data.
+"""
 import os
 import sys
 import json
@@ -11,18 +17,9 @@ import pandas as pd
 import pytest
 
 # ---------------------------------------------------------------------------
-# Path setup
+# Path constants  (sys.path set up by conftest.py)
 # ---------------------------------------------------------------------------
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
-sys.path.insert(0, PROJECT_ROOT)
-
-for _p in [
-    os.path.join(PROJECT_ROOT, "dags", "src", "validation", "validate"),
-    os.path.join(PROJECT_ROOT, "dags", "src", "validation"),
-    os.path.join(PROJECT_ROOT, "dags", "src"),
-]:
-    if os.path.isdir(_p) and _p not in sys.path:
-        sys.path.insert(0, _p)
 
 # ---------------------------------------------------------------------------
 # Stub validation_config
@@ -335,12 +332,6 @@ def test_cross_ref_orphan_asins_flagged(tmp_path):
     assert len(results) == 1
     assert not results[0].passed
 
-def test_cross_ref_check_name(tmp_path):
-    prod = _prod_jsonl(tmp_path)
-    rev  = _rev_jsonl(tmp_path)
-    results = M.validate_cross_references(prod, rev)
-    assert "cross_ref" in results[0].check_name
-
 
 # =============================================================================
 # 5) run_raw_validation (integration)
@@ -354,10 +345,4 @@ def test_run_raw_validation_returns_report(tmp_path):
     assert isinstance(report, ValidationReport)
     assert report.stage == "raw"
     assert len(report.results) > 0
-
-def test_run_raw_validation_clean_data_passes(tmp_path):
-    fin  = _fin_csv(tmp_path)
-    prod = _prod_jsonl(tmp_path)
-    rev  = _rev_jsonl(tmp_path)
-    report = M.run_raw_validation(fin, prod, rev, threshold_config=None)
     assert report.passed

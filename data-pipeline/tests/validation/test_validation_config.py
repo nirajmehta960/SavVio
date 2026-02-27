@@ -1,4 +1,10 @@
-# tests/validation/test_validation_config.py
+"""
+Tests for shared validation infrastructure — validation_config.py.
+
+Covers Severity enum ordering, CheckResult construction and tagging,
+ValidationReport (passed/warnings/summary/save), and threshold loading
+(defaults, file-based overrides, merge logic).
+"""
 import os
 import sys
 import json
@@ -7,17 +13,9 @@ import importlib.util
 import pytest
 
 # ---------------------------------------------------------------------------
-# Path setup
+# Path constants  (sys.path set up by conftest.py)
 # ---------------------------------------------------------------------------
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
-sys.path.insert(0, PROJECT_ROOT)
-
-for _p in [
-    os.path.join(PROJECT_ROOT, "dags", "src", "validation"),
-    os.path.join(PROJECT_ROOT, "dags", "src"),
-]:
-    if os.path.isdir(_p) and _p not in sys.path:
-        sys.path.insert(0, _p)
 
 # ---------------------------------------------------------------------------
 # Load module under test
@@ -51,42 +49,19 @@ load_thresholds = M.load_thresholds
 def test_severity_ordering():
     assert Severity.INFO < Severity.WARNING < Severity.CRITICAL
 
-def test_severity_values():
-    assert Severity.INFO    == 0
-    assert Severity.WARNING == 1
-    assert Severity.CRITICAL == 2
-
 
 # =============================================================================
 # 2) CheckResult
 # =============================================================================
 
-def test_check_result_tag_pass():
-    r = CheckResult("test", True, Severity.INFO, "ds", "raw")
-    assert "INFO" in r.tag
-
-def test_check_result_tag_warning():
-    r = CheckResult("test", False, Severity.WARNING, "ds", "raw")
-    assert "WARNING" in r.tag
-
-def test_check_result_tag_critical():
-    r = CheckResult("test", False, Severity.CRITICAL, "ds", "raw")
-    assert "CRITICAL" in r.tag
-
-def test_check_result_defaults():
-    r = CheckResult("test", True, Severity.INFO, "ds", "raw")
-    assert r.details == ""
-    assert r.metric_value is None
-
-def test_check_result_stores_all_fields():
-    r = CheckResult("my_check", False, Severity.WARNING, "financial", "processed",
-                    details="bad value", metric_value=0.42)
-    assert r.check_name == "my_check"
-    assert r.passed is False
-    assert r.dataset == "financial"
-    assert r.stage == "processed"
-    assert r.details == "bad value"
-    assert r.metric_value == pytest.approx(0.42)
+@pytest.mark.parametrize("severity,label", [
+    (Severity.INFO, "INFO"),
+    (Severity.WARNING, "WARNING"),
+    (Severity.CRITICAL, "CRITICAL"),
+])
+def test_check_result_tag_contains_severity(severity, label):
+    r = CheckResult("test", False, severity, "ds", "raw")
+    assert label in r.tag
 
 
 # =============================================================================

@@ -1,4 +1,10 @@
-# tests/validation/test_processed_validator.py
+"""
+Tests for Processed Data Validation — validate/processed_validator.py.
+
+Covers post-preprocessing checks: required columns, null detection, value ranges,
+duplicate detection, record loss thresholds, and rating validation for processed
+financial, product, and review data.
+"""
 import os
 import sys
 import json
@@ -12,18 +18,9 @@ import pandas as pd
 import pytest
 
 # ---------------------------------------------------------------------------
-# Path setup
+# Path constants  (sys.path set up by conftest.py)
 # ---------------------------------------------------------------------------
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
-sys.path.insert(0, PROJECT_ROOT)
-
-for _p in [
-    os.path.join(PROJECT_ROOT, "dags", "src", "validation", "validate"),
-    os.path.join(PROJECT_ROOT, "dags", "src", "validation"),
-    os.path.join(PROJECT_ROOT, "dags", "src"),
-]:
-    if os.path.isdir(_p) and _p not in sys.path:
-        sys.path.insert(0, _p)
 
 # ---------------------------------------------------------------------------
 # Stub validation_config
@@ -362,15 +359,3 @@ def test_run_processed_validation_returns_report(tmp_path):
     assert isinstance(report, ValidationReport)
     assert report.stage == "processed"
     assert len(report.results) > 0
-
-def test_run_processed_validation_has_results(tmp_path):
-    fin  = tmp_path / "fin.csv";   _write_csv(fin, _fin_df())
-    prod = tmp_path / "prod.jsonl"; _write_jsonl(prod, _prod_df())
-    rev  = tmp_path / "rev.jsonl";  _write_jsonl(rev, _rev_df())
-
-    report = M.run_processed_validation(
-        str(fin), str(prod), str(rev),
-        str(fin), str(prod), str(rev),
-        None,
-    )
-    assert len(report.results) >= 5

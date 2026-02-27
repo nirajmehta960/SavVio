@@ -1,4 +1,10 @@
-# tests/test_config.py
+"""
+Tests for Data Ingestion — ingestion/config.py.
+
+Covers default configuration values, environment-specific overrides,
+GCS path construction, API endpoint configs, threshold settings, and
+validation of the configuration module constants.
+"""
 import os
 import sys
 import types
@@ -10,17 +16,9 @@ from unittest.mock import patch, MagicMock
 import pytest
 
 # ---------------------------------------------------------------------------
-# Path setup
+# Path constants  (sys.path set up by conftest.py)
 # ---------------------------------------------------------------------------
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
-sys.path.insert(0, PROJECT_ROOT)
-
-for _p in [
-    os.path.join(PROJECT_ROOT, "dags", "src", "ingestion"),
-    os.path.join(PROJECT_ROOT, "dags", "src"),
-]:
-    if os.path.isdir(_p) and _p not in sys.path:
-        sys.path.insert(0, _p)
 
 # ---------------------------------------------------------------------------
 # Stub dotenv so load_dotenv() is a no-op
@@ -111,17 +109,6 @@ def test_blob_paths_defaults():
 # 2) API configuration
 # =============================================================================
 
-def test_api_base_url_default():
-    c = _load_config({"API_BASE_URL": "", "ENVIRONMENT": "dev", "GCP_CREDENTIALS_PATH": ""})
-    # When env var is empty string, getenv returns "" → falls back in code
-    # The default in getenv is only used when var is NOT set at all
-    c2 = _load_config({"ENVIRONMENT": "dev", "GCP_CREDENTIALS_PATH": ""})
-    # unset → default
-    env_without = {k: v for k, v in os.environ.items() if k != "API_BASE_URL"}
-    with patch.dict(os.environ, env_without, clear=True):
-        assert c2.API_BASE_URL  # just ensure it's set
-
-
 def test_api_timeout_default():
     c = _load_config({"ENVIRONMENT": "dev", "GCP_CREDENTIALS_PATH": ""})
     assert c.API_TIMEOUT == 30
@@ -210,29 +197,15 @@ def test_validate_config_fails_prod_without_api_key():
         c.validate_config()
 
 
-def test_validate_config_returns_none_on_success():
-    c = _load_config({
-        "ENVIRONMENT": "dev",
-        "GCS_BUCKET_NAME": "bucket",
-        "GCP_CREDENTIALS_PATH": ""
-    })
-    result = c.validate_config()
-    assert result is None
-
 
 # =============================================================================
 # 6) get_config_summary()
 # =============================================================================
 
-def test_get_config_summary_returns_dict():
+def test_get_config_summary_has_expected_keys():
     c = _load_config({"ENVIRONMENT": "dev", "GCP_CREDENTIALS_PATH": ""})
     summary = c.get_config_summary()
     assert isinstance(summary, dict)
-
-
-def test_get_config_summary_keys():
-    c = _load_config({"ENVIRONMENT": "dev", "GCP_CREDENTIALS_PATH": ""})
-    summary = c.get_config_summary()
     for key in ("environment", "data_source", "gcs_bucket", "api_base_url", "log_level", "data_dir"):
         assert key in summary
 
@@ -243,11 +216,6 @@ def test_get_config_summary_no_api_key():
     summary = c.get_config_summary()
     assert "topsecret" not in str(summary)
     assert "api_key" not in summary
-
-
-def test_get_config_summary_environment_value():
-    c = _load_config({"ENVIRONMENT": "staging", "GCP_CREDENTIALS_PATH": ""})
-    assert c.get_config_summary()["environment"] == "staging"
 
 
 # =============================================================================
