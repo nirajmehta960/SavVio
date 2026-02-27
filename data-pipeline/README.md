@@ -1,34 +1,7 @@
-# SavVio Data Pipeline Implementation Guide
-
-## MLOps Course: Data Pipeline Phase
-
-**Project:** SavVio - AI-Driven Financial Advocacy Tool  
+# SavVio - Data Pipeline Phase
 **Team Members:** Murtaza Nipplewala, Niraj Mehta, Wen-Hsin Su, Pranathi Bombay, Rishabh Joshi, Sanjana Patnam
 
----
-
-## Evaluation Criteria Mapping
-
-This pipeline is designed to meet the course evaluation criteria:
-
-| Criterion                                    | How It Is Addressed                                                                                                                                  |
-| -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **1. Proper Documentation**                  | This README, `SETUP_AND_RUN.md`, well-commented code, and the folder structure below.                                                                |
-| **2. Modular Syntax and Code**               | Each component lives in `dags/src/` as reusable modules (ingestion, preprocess, features, validation, database, bias).                               |
-| **3. Pipeline Orchestration (Airflow DAGs)** | `data_pipeline_airflow.py` implements the full DAG with logical task flow and branching for error handling.                                          |
-| **4. Tracking and Logging**                  | Python logging in every module; Airflow task logs; error alerts via `EmailOperator` on failure.                                                      |
-| **5. Data Version Control (DVC)**            | Data is versioned with DVC using `raw.dvc`, `processed.dvc`, and `features.dvc` in `dags/data/`; history is maintained in Git. See SETUP_AND_RUN.md. |
-| **6. Pipeline Flow Optimization**            | Parallel tasks (ingestion, preprocessing); optimization documented in Phase 19; Airflow Gantt charts available in the UI.                            |
-| **7. Schema and Statistics Generation**      | Great Expectations used in validation (raw, processed, features); schema and quality validated over time.                                            |
-| **8. Anomaly Detection and Alerts**          | Anomaly validators in `src/validation/anomaly/`; raw and featured anomaly checks; email alerts on validation failure.                                |
-| **9. Bias Detection and Mitigation**         | Data slicing in `dags/src/bias/` (financial, product, review); slice analysis and training-time mitigation recommendations.                          |
-| **10. Test Modules**                         | Unit tests under `tests/` for ingestion, preprocess, features, validation, database, and DAG; pytest; edge cases covered.                            |
-| **11. Reproducibility**                      | `SETUP_AND_RUN.md` provides setup and run instructions so the pipeline can be replicated on another machine.                                         |
-| **12. Error Handling and Logging**           | Branching and error-email tasks in the DAG; try/except and validation reports; logs sufficient for troubleshooting.                                  |
-
----
-
-## Pipeline Execution Order
+## Pipeline Flow
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -165,7 +138,7 @@ Establish the foundational project structure, dependencies, and development envi
    │   ├── README.md              # This file
    │   ├── SETUP_AND_RUN.md       # Setup and run instructions (reproducibility)
    │   ├── data-requirements.txt  # Python dependencies (or use repo root requirements.txt)
-   │   ├── config/                # Configuration (e.g. database, GCP key path)
+   │   ├── config/                # Configuration (Airflow, Token, GCP)
    │   ├── logs/                  # Pipeline execution logs
    │   ├── tests/                 # Unit tests (pytest)
    │   │   ├── ingestion/
@@ -178,7 +151,7 @@ Establish the foundational project structure, dependencies, and development envi
    │   └── dags/                  # Airflow DAG and pipeline code
    │       ├── data_pipeline_airflow.py   # Main DAG definition
    │       ├── data/
-   │       │   ├── raw/           # Raw data (financial_data.csv, product_data.jsonl, review_data.jsonl)
+   │       │   ├── raw/           # Raw data (financial(csv), product(jsonl), review(jsonl))
    │       │   ├── processed/     # Preprocessed outputs
    │       │   ├── features/      # Feature-engineered outputs
    │       │   ├── raw.dvc        # DVC pointer for raw (versioned in Git)
@@ -186,67 +159,69 @@ Establish the foundational project structure, dependencies, and development envi
    │       │   └── features.dvc   # DVC pointer for features
    │       └── src/
    │           ├── ingestion/     # Data acquisition (GCS, APIs)
-   │           │   ├── run_ingestion.py
+   │           │   ├── __init__.py
+   │           │   ├── api_loader.py
+   │           │   ├── config.py
    │           │   ├── gcs_loader.py
-   │           │   └── ...
+   │           │   └── run_ingestion.py
    │           ├── preprocess/    # Cleaning and transformation
-   │           │   ├── run_preprocessing.py
+   │           │   ├── __init__.py
    │           │   ├── financial.py
    │           │   ├── product.py
    │           │   ├── review.py
-   │           │   └── ...
+   │           │   ├── run_preprocessing.py
+   │           │   └── utils.py
    │           ├── features/      # Feature engineering
-   │           │   ├── run_features.py
+   │           │   ├── __init__.py
    │           │   ├── financial_features.py
    │           │   ├── product_review_features.py
-   │           │   └── ...
+   │           │   ├── run_features.py
+   │           │   └── utils.py
    │           ├── validation/   # Schema, stats, anomaly checks (Great Expectations)
+   │           │   ├── __init__.py
+   │           │   ├── anomaly/
+   │           │   │   ├── __init__.py
+   │           │   │   ├── anomaly_validator.py
+   │           │   │   └── detectors.py
    │           │   ├── run_validation.py
    │           │   ├── validate/
-   │           │   ├── anomaly/
-   │           │   └── ...
+   │           │   │   ├── __init__.py
+   │           │   │   ├── feature_validator.py
+   │           │   │   ├── processed_validator.py
+   │           │   │   └── raw_validator.py
+   │           │   └── validation_config.py
    │           ├── database/      # PostgreSQL and pgvector load
+   │           │   ├── __init__.py
+   │           │   ├── db_connection.py
+   │           │   ├── db_schema.py
    │           │   ├── run_database.py
    │           │   ├── upload_to_db.py
-   │           │   ├── vector_embed.py
-   │           │   └── ...
+   │           │   └── vector_embed.py
    │           └── bias/          # Bias detection (data slicing)
-   │               ├── run_bias.py
+   │               ├── __init__.py
    │               ├── financial_bias.py
    │               ├── product_bias.py
    │               ├── review_bias.py
+   │               ├── run_bias.py
    │               └── utils.py
    ```
 
-2. **Set up Python environment**
-   - Create `requirements.txt` or `environment.yml`
-   - Include: pandas, polars, apache-airflow, dvc, great-expectations, pytest, evidently, fairlearn, sqlalchemy, psycopg2-binary, sentence-transformers
+2. **Configure Docker environment for Airflow**
+   - Use official Apache Airflow Docker Compose setup 
+   - Follow SETUP_AND_RUN
 
-3. **Configure Docker environment for Airflow**
-   - Use official Apache Airflow Docker Compose setup
-   - Customize for SavVio (mount data directories, install dependencies)
-   - Ensure all team members can replicate the environment
-
-4. **Initialize version control**
+3. **Initialize version control**
    - Git repository setup
    - Create `.gitignore` (exclude data files, logs, credentials, `__pycache__`)
    - Initialize DVC: `dvc init`
    - Configure DVC remote: `dvc remote add -d gcs gs://savvio-data-bucket`
 
-5. **Configure database connections**
-   - Create `config/database.yaml` with connection settings
+4. **Configure ENV and database connections**
+   - Copy `.env.example` to `.env`
+   - Follow SETUP_AND_RUN to configure ENV and database connections
    - Local (Development): Local PostgreSQL instance
    - Cloud (Production): GCP Cloud SQL for PostgreSQL
 
-### Tools & Alternatives
-
-| Tool                    | Purpose               | Alternative              |
-| ----------------------- | --------------------- | ------------------------ |
-| Docker + Docker Compose | Containerized Airflow | Podman                   |
-| Git                     | Code version control  | —                        |
-| DVC                     | Data version control  | LakeFS                   |
-| Python 3.12+            | Runtime               | —                        |
-| PostgreSQL              | Local database        | SQLite (lighter for dev) |
 
 ---
 
@@ -263,86 +238,73 @@ Identify, understand, and document the data sources needed for SavVio's purchase
    - User Need: Make informed, responsible purchase decisions
    - System Need: Financial health data + Product information + Product reviews
 
-2. **Document data sources for SavVio**
-
-   **Financial Data:**
-   | Attribute | Details |
-   |-----------|---------|
-   | Source | Personal Finance dataset |
-   | Format | CSV |
-   | Size | ~X records (to be confirmed) |
-   | Update Frequency | Static (for academic project) |
-
-   **Product Data:**
-   | Attribute | Details |
-   |-----------|---------|
-   | Source | Product dataset |
-   | Format | JSONL |
-   | Size | ~X records (to be confirmed) |
-   | Update Frequency | Static (for academic project) |
-
-   **Review Data:**
-   | Attribute | Details |
-   |-----------|---------|
-   | Source | Product review dataset |
-   | Format | JSONL |
-   | Size | ~X records (to be confirmed) |
-   | Update Frequency | Static or event-driven |
-
-3. **Document expected data fields**
-
-   **Financial Data Fields:**
-   | Field | Type | Description | Required |
-   |-------|------|-------------|----------|
-   | monthly_income | float | User's monthly income | Yes |
-   | rent | float | Monthly rent payment | No |
-   | recurring_bills | float | Subscriptions, utilities, etc. | No |
-   | savings_balance | float | Current savings amount | No |
-   | debt_obligations | float | Monthly debt payments | No |
-
-   **Product Data Fields:**
-   | Field | Type | Description | Required |
-   |-------|------|-------------|----------|
-   | product_name | string | Name of the product | Yes |
-   | category | string | Product category | Yes |
-   | price | float | Product price | Yes |
-   | specifications | string | Product details/specs | No |
-   | description | string | Product description (for embeddings) | No |
-
-   **Review Data Fields:**
-   | Field | Type | Description | Required |
-   |-------|------|-------------|----------|
-   | product_id | integer/string | Foreign key to product | Yes |
-   | reviewer_id | string | Anonymized reviewer identifier | Yes |
-   | rating | float | Product rating (1-5) | Yes |
-   | text | string | Review text/feedback | No |
-   | helpful_count | integer | Number of "helpful" votes | No |
-   | date | timestamp | Review submission date | No |
-
-4. **Document data privacy measures**
+2. **Document data privacy measures**
    - Masking/hashing user identifiers
    - Encryption for financial snapshots
    - Read-only access (no transactional capabilities)
    - Compliance with data privacy principles
    - Anonymized review data (no PII)
 
-5. **Create Data Card documentation**
+3. **Create Data Card documentation**
 
-   | Attribute             | Description                                                |
-   | --------------------- | ---------------------------------------------------------- |
-   | Data Type             | Medium-sized datasets (thousands of records)               |
-   | Financial Data Fields | Monthly income, rent, recurring bills, savings, debt       |
-   | Product Data Fields   | Product name, category, price, specifications, description |
-   | Review Data Fields    | Product ID, rating, text, helpfulness metrics              |
-   | Estimated Size        | Small to medium (hundreds to thousands of records each)    |
-   | Update Frequency      | Periodic or event-driven (simulated)                       |
-   | Sensitive Fields      | Income, savings, expenses (masked and encrypted)           |
+   **Financial Data (from Kaggle):**
+   | Field | Description |
+   |-------|-------------|
+   | user_id | Unique user identifier |
+   | age | Age of individual |
+   | gender | Gender |
+   | education_level | Highest education level |
+   | employment_status | Employment type |
+   | job_title | Job title or role |
+   | monthly_income_usd | Approx. monthly income in USD |
+   | monthly_expenses_usd | Approx. monthly expenses in USD |
+   | savings_usd | Total savings |
+   | has_loan | Whether individual has a loan |
+   | loan_type | Type of loan |
+   | loan_amount_usd | Loan principal amount |
+   | loan_term_months | Duration of loan |
+   | monthly_emi_usd | Monthly installment (EMI) |
+   | loan_interest_rate_pct | Interest rate on loan (%) |
+   | debt_to_income_ratio | Ratio of debt payments to income |
+   | credit_score | Synthetic credit score |
+   | savings_to_income_ratio | Ratio of savings to annual income |
+   | region | Geographic region |
+   | record_date | Record creation date |
 
-### Outputs
+   **Product Data (from Amazon Reviews'23):**
+   | Field | Description |
+   |-------|-------------|
+   | main_category | Main category of the product |
+   | title | Name of the product |
+   | average_rating | Rating of the product |
+   | rating_number | Number of ratings |
+   | features | Bullet-point features |
+   | description | Description of product |
+   | price | Price in USD |
+   | images | Product images |
+   | videos | Product videos |
+   | store | Store name |
+   | categories | Hierarchical categories |
+   | details | Product details |
+   | parent_asin | Parent ID of product |
+   | bought_together | Recommended bundles |
 
-- `docs/data_sources.md` — Documented data sources and fields
-- `docs/data_card.md` — Formal data card
-- `docs/privacy_measures.md` — Privacy and security documentation
+   **Review Data (from Amazon Reviews'23):**
+   | Field | Description |
+   |-------|-------------|
+   | rating | Rating of the product (1-5) |
+   | title | Title of the review |
+   | text | Text body of review |
+   | images | Images posted by user |
+   | asin | ID of the product |
+   | parent_asin | Parent ID of the product |
+   | user_id | ID of reviewer |
+   | timestamp | Time of review |
+   | verified_purchase | User purchase verification |
+   | helpful_vote | Helpful votes |
+
+
+
 
 ---
 
@@ -354,81 +316,24 @@ Download data from external sources and load it into the pipeline system in a co
 
 ### Steps
 
-1. **Create modular ingestion package structure**
+1. **Implement shared utilities** (`src/ingestion/config.py`, `src/ingestion/api_loader.py`)
+   - Logging, config variables, API wrapper functions.
 
-   ```
-   scripts/ingest/
-   ├── __init__.py
-   ├── api_loader.py         # API utilities
-   ├── gcs_loader.py         # GCS utilities
-   ├── config.py             # Configuration
-   ├── financial.py          # Financial data ingestion
-   ├── product.py            # Product data ingestion
-   ├── review.py             # Review data ingestion
-   ├── utils.py              # Shared utilities
-   └── run_ingestion.py      # Main entry point
-   ```
+2. **Implement generic loaders** (`src/ingestion/gcs_loader.py`)
+   - `download_from_gcs()` — Fetches files from cloud storage.
+   - Saves to `data/raw/` path based on provided keys.
 
-2. **Implement shared utilities** (`ingest/utils.py`)
-   - Logging configuration
-   - Error handling helpers
-   - File path management
-   - API wrapper functions
+3. **Run ingestion pipeline** (`src/ingestion/run_ingestion.py`)
+   - Connects to sources (GCS, APIs) sequentially or in parallel.
+   - Fetches and stores raw data.
 
-3. **Implement financial data ingestion** (`ingest/financial.py`)
-   - `download_financial_data()` — Fetches from source
-   - `load_financial_data()` — Reads CSV into DataFrame
-   - `save_raw_financial_data()` — Saves to `data/raw/`
-
-4. **Implement product data ingestion** (`ingest/product.py`)
-   - `download_product_data()` — Fetches from source
-   - `load_product_data()` — Reads JSONL into DataFrame
-   - `save_raw_product_data()` — Saves to `data/raw/`
-
-5. **Implement review data ingestion** (`ingest/review.py`)
-   - `download_review_data()` — Fetches from source
-   - `load_review_data()` — Reads JSONL into DataFrame
-   - `save_raw_review_data()` — Saves to `data/raw/`
-
-6. **Store raw data in original format**
+4. **Store raw data in original format**
    - Save to `data/raw/financial.csv`
    - Save to `data/raw/products.jsonl`
    - Save to `data/raw/reviews.jsonl`
 
-7. **Log ingestion metadata**
-   - Timestamp, record counts, checksums, errors
-
-### Tools & Alternatives
-
-| Tool        | Purpose       | Alternative          | When to Use Alternative                |
-| ----------- | ------------- | -------------------- | -------------------------------------- |
-| Pandas      | Data loading  | Polars               | If performance issues with large files |
-| API clients | Data fetching | Direct HTTP requests | Custom control needed                  |
-
-### Airflow Integration
-
-```python
-ingest_financial = PythonOperator(
-    task_id='ingest_financial_data',
-    python_callable=financial.load_financial_data,
-    dag=dag
-)
-
-ingest_products = PythonOperator(
-    task_id='ingest_product_data',
-    python_callable=product.load_product_data,
-    dag=dag
-)
-
-ingest_reviews = PythonOperator(
-    task_id='ingest_review_data',
-    python_callable=review.load_review_data,
-    dag=dag
-)
-
-# Parallel execution
-[ingest_financial, ingest_products, ingest_reviews] >> next_task
-```
+5. **Log ingestion metadata**
+   - Timestamp, record counts, checksums, errors.
 
 ---
 
@@ -467,12 +372,6 @@ Version control the raw ingested data to ensure reproducibility and enable rollb
    git tag -a "data-raw-v1.0" -m "Initial raw data ingestion"
    ```
 
-### Tools & Alternatives
-
-| Tool              | Purpose         | Alternative        |
-| ----------------- | --------------- | ------------------ |
-| DVC               | Data versioning | LakeFS, Git LFS    |
-| GCP Cloud Storage | Remote storage  | AWS S3, Azure Blob |
 
 ### Why Version Here?
 
@@ -482,11 +381,11 @@ Version control the raw ingested data to ensure reproducibility and enable rollb
 
 ---
 
-## Phase 5: Schema & Statistics Generation
+## Phase 5: Data Schema & Statistics Generation
 
 ### Objective
 
-Define the expected structure (data schema) of your datasets and compute baseline statistics. This is NOT about database tables — it's about defining what valid data looks like.
+Define the expected structure (data schema) of your datasets and compute baseline statistics.
 
 > **Note:** "Data Schema" = expected structure/rules for a dataset (columns, types, constraints).  
 > "Database Schema" = tables, columns, relationships in a database (covered in Phase 14).
@@ -535,19 +434,6 @@ Define the expected structure (data schema) of your datasets and compute baselin
    - `expect_column_values_to_be_between`
    - `expect_column_values_to_be_in_set`
 
-4. **Store artifacts**
-   - `config/schemas/financial_schema.json`
-   - `config/schemas/product_schema.json`
-   - `config/schemas/review_schema.json`
-   - `config/statistics/baseline_stats.json`
-
-### Tools & Alternatives
-
-| Tool               | Purpose               | Alternative       | When to Use Alternative  |
-| ------------------ | --------------------- | ----------------- | ------------------------ |
-| Great Expectations | Schema & expectations | Pandera           | Lighter weight, Pythonic |
-| ydata-profiling    | Auto statistics       | Pandas describe() | Quick exploration        |
-| Custom Python      | Full control          | —                 | Simple schemas           |
 
 ---
 
@@ -592,13 +478,6 @@ Validate raw ingested data against the schema defined in Phase 5 to catch ingest
 4. **Store results**
    - `logs/validation/raw_validation_YYYYMMDD.json`
 
-### Tools & Alternatives
-
-| Tool               | Purpose                | Alternative       | When to Use Alternative      |
-| ------------------ | ---------------------- | ----------------- | ---------------------------- |
-| Great Expectations | Validation checkpoints | Pandera           | Simpler DataFrame validation |
-| —                  | —                      | Pydantic          | Row-level/JSON validation    |
-| —                  | —                      | Custom validators | Maximum flexibility          |
 
 ---
 
@@ -649,14 +528,6 @@ Detect data anomalies (outliers, suspicious patterns) and trigger alerts when is
 
 4. **Quarantine suspicious records**
 
-### Tools & Alternatives
-
-| Tool                         | Purpose               | Alternative    | When to Use Alternative |
-| ---------------------------- | --------------------- | -------------- | ----------------------- |
-| Great Expectations           | Rule-based detection  | Custom Python  | More control            |
-| Evidently AI                 | Statistical detection | PyOD           | More algorithms         |
-| Airflow EmailOperator        | Email alerts          | SendGrid, SMTP | External email service  |
-| Airflow SlackWebhookOperator | Slack alerts          | Custom webhook | Other chat platforms    |
 
 ---
 
@@ -668,19 +539,7 @@ Clean, transform, and standardize validated data into a consistent format ready 
 
 ### Steps
 
-1. **Create modular preprocessing package**
-
-   ```
-   scripts/preprocess/
-   ├── __init__.py
-   ├── financial.py
-   ├── product.py
-   ├── review.py
-   ├── utils.py
-   └── run_preprocessing.py
-   ```
-
-2. **Data cleaning**
+1. **Data cleaning**
 
    **Financial Data:**
    - Handle missing values (impute median or flag)
@@ -700,7 +559,7 @@ Clean, transform, and standardize validated data into a consistent format ready 
    - Validate ratings are in 1-5 range
    - Handle missing helpful_count
 
-3. **Data transformation**
+2. **Data transformation**
 
    **Financial Data:**
    - Convert to monthly format (annual ÷ 12, weekly × 4.33)
@@ -715,17 +574,11 @@ Clean, transform, and standardize validated data into a consistent format ready 
    - Normalize text for processing
    - Aggregate ratings by product
 
-4. **Save processed data**
+3. **Save processed data**
    - `data/processed/financial_processed.csv`
    - `data/processed/products_processed.csv`
    - `data/processed/reviews_processed.csv`
 
-### Tools & Alternatives
-
-| Tool   | Purpose              | Alternative | When to Use Alternative       |
-| ------ | -------------------- | ----------- | ----------------------------- |
-| Pandas | Data manipulation    | Polars      | 10-100x faster for large data |
-| NumPy  | Numerical operations | —           | —                             |
 
 ---
 
@@ -759,12 +612,6 @@ Validate that preprocessing transformations didn't break the data or introduce e
    - Alert if significant data loss
    - Option to rollback to raw data
 
-### Tools & Alternatives
-
-| Tool               | Purpose               | Alternative |
-| ------------------ | --------------------- | ----------- |
-| Great Expectations | Validation            | Pandera     |
-| Custom Python      | Transformation checks | —           |
 
 ---
 
@@ -814,18 +661,7 @@ Create meaningful features within each data track — financial health features 
 
 ### Steps
 
-1. **Create modular feature engineering package**
-
-   ```
-   scripts/features/
-   ├── __init__.py
-   ├── financial_features.py
-   ├── review_features.py
-   ├── utils.py
-   └── run_features.py
-   ```
-
-2. **Financial health features** (`financial_features.py`)
+1. **Financial health features** (`financial_features.py`)
 
    Input: `data/processed/financial_preprocessed.csv`
    Output: `data/features/financial_featured.csv`
@@ -838,10 +674,10 @@ Create meaningful features within each data track — financial health features 
    | `monthly_expense_burden_ratio` | (expenses + emi) / income  | Spending pattern                  |
    | `emergency_fund_months`        | savings / (expenses + emi) | Safety buffer in months           |
 
-3. **Product quality features** (`review_features.py`)
+2. **Product quality features** (`review_features.py`)
 
    Input: `data/processed/review_preprocessed.jsonl`
-   Output: `data/features/product_rating_variance.csv` (one row per product)
+   Output: `data/features/product_featured.jsonl` (one row per product)
 
    | Feature           | Formula                 | Purpose                 |
    | ----------------- | ----------------------- | ----------------------- |
@@ -849,22 +685,15 @@ Create meaningful features within each data track — financial health features 
 
    > **Note:** `average_rating` and `rating_number` (equivalent to `num_reviews`) already exist in the product metadata. The only feature requiring individual review data is `rating_variance`, which measures how polarized opinions are about a product.
 
-4. **Handle edge cases**
+3. **Handle edge cases**
    - Zero income: ratios set to NaN (XGBoost handles natively)
    - Division by zero: safe handling with NaN defaults
    - Single-review products: rating_variance defaults to 0.0
 
-5. **Outputs**
+4. **Outputs**
    - `data/features/financial_featured.csv` — Financial profiles enriched with health metrics
-   - `data/features/product_rating_variance.csv` — Product-level rating variance
-   - `config/feature_definitions.json` — Feature metadata documentation
-
-### Tools & Alternatives
-
-| Tool   | Purpose          | Alternative | When to Use Alternative |
-| ------ | ---------------- | ----------- | ----------------------- |
-| Pandas | Feature creation | Polars      | Large datasets          |
-| NumPy  | Numerical ops    | —           | —                       |
+   - `data/features/product_featured.jsonl` — Product-level features
+   - `data/features/review_featured.jsonl` — Review-level features
 
 ---
 
@@ -906,12 +735,6 @@ Validate that engineered features are correctly calculated and within expected r
    - Log calculation errors
    - Identify problematic source records
 
-### Tools & Alternatives
-
-| Tool               | Purpose              | Alternative |
-| ------------------ | -------------------- | ----------- |
-| Great Expectations | Feature validation   | Pandera     |
-| Custom Python      | Formula verification | —           |
 
 ---
 
@@ -971,111 +794,16 @@ Load processed data, engineered features, and product embeddings into PostgreSQL
 1. **Identify datasets to load**
    - `data/features/financial_featured.csv` — Financial profiles with health metrics
    - `data/processed/product_preprocessed.jsonl` — Product catalog
-   - `data/features/product_rating_variance.csv` — Rating variance per product (merged onto products during load)
+   - `data/features/product_featured.jsonl` — Rating variance per product (merged onto products during load)
    - `data/processed/review_preprocessed.jsonl` — Individual reviews
 
-2. **Create database loading package**
+2. **Define database schema (tables)**
 
-   ```
-   scripts/database/
-   ├── __init__.py
-   ├── postgres_loader.py    # Relational data
-   ├── vector_loader.py      # Embeddings
-   ├── models.py             # SQLAlchemy models
-   └── utils.py              # Connection helpers
-   ```
+   - PostgreSQL Tables: Schema defined in `src/database/db_schema.py`
 
-3. **Define database schema (tables)**
+   - pgvector Table: For embeddings - defined in `src/database/vector_loader.py`
 
-   **PostgreSQL Tables:**
-
-   ```sql
-   -- Financial profiles with pre-computed features
-   CREATE TABLE financial_profiles (
-       id SERIAL PRIMARY KEY,
-       user_id VARCHAR(255) UNIQUE,
-       monthly_income DECIMAL(12,2),
-       monthly_expenses DECIMAL(12,2),
-       monthly_emi DECIMAL(12,2),
-       savings_balance DECIMAL(12,2),
-       discretionary_income DECIMAL(12,2),
-       debt_to_income_ratio DECIMAL(5,4),
-       savings_to_income_ratio DECIMAL(5,4),
-       monthly_expense_burden_ratio DECIMAL(5,4),
-       emergency_fund_months DECIMAL(8,2),
-       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-   );
-
-   -- Products with quality signal from reviews
-   CREATE TABLE products (
-       id SERIAL PRIMARY KEY,
-       product_id VARCHAR(255) UNIQUE,
-       product_name VARCHAR(500),
-       category VARCHAR(100),
-       price DECIMAL(12,2),
-       average_rating DECIMAL(2,1),
-       rating_number INTEGER,
-       rating_variance DECIMAL(5,4),     -- Merged from review features
-       specifications TEXT,
-       description TEXT,
-       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-   );
-
-   -- Individual reviews (for RAG context retrieval)
-   CREATE TABLE reviews (
-       id SERIAL PRIMARY KEY,
-       product_id VARCHAR(255) REFERENCES products(product_id),
-       reviewer_id VARCHAR(255),
-       rating DECIMAL(2,1),
-       text TEXT,
-       helpful_vote INTEGER DEFAULT 0,
-       review_date TIMESTAMP,
-       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-   );
-   ```
-
-   **pgvector Table (for embeddings):**
-
-   ```sql
-   CREATE EXTENSION IF NOT EXISTS vector;
-
-   CREATE TABLE product_embeddings (
-       id SERIAL PRIMARY KEY,
-       product_id VARCHAR(255) REFERENCES products(product_id),
-       embedding vector(384),
-       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-   );
-
-   CREATE INDEX ON product_embeddings
-   USING ivfflat (embedding vector_cosine_ops);
-   ```
-
-4. **Merge rating_variance onto products during load**
-
-   This is where `product_rating_variance.csv` gets attached to products:
-
-   ```python
-   # In postgres_loader.py
-   def load_products(products_path, rating_variance_path, engine):
-       """Load products with rating_variance merged from review features."""
-       products_df = pd.read_json(products_path, lines=True)
-       variance_df = pd.read_csv(rating_variance_path)
-
-       # Left join: keep all products, attach variance where available.
-       products_df = pd.merge(
-           products_df,
-           variance_df,
-           on="product_id",
-           how="left"
-       )
-
-       # Products with no reviews get rating_variance = 0.0.
-       products_df["rating_variance"] = products_df["rating_variance"].fillna(0.0)
-
-       products_df.to_sql("products", engine, if_exists="replace", index=False)
-   ```
-
-5. **Implement data loaders**
+3. **Implement data loaders**
 
    **postgres_loader.py:**
    - `load_financial_profiles(df, engine)` — Load financial profiles with features
@@ -1087,7 +815,7 @@ Load processed data, engineered features, and product embeddings into PostgreSQL
    - `generate_embeddings(texts, model)` — Create embeddings from product descriptions
    - `load_embeddings(product_ids, embeddings, engine)` — Store in pgvector
 
-6. **Environment-based configuration**
+4. **Environment-based configuration**
 
    ```yaml
    # config/database.yaml
@@ -1106,52 +834,14 @@ Load processed data, engineered features, and product embeddings into PostgreSQL
      password: ${DB_PASSWORD}
    ```
 
-7. **Load data**
+5. **Load data**
    - Truncate existing data (or upsert strategy)
    - Load financial profiles (with pre-computed features)
    - Load products (with rating_variance merged)
    - Load reviews
    - Generate and load embeddings
 
-### Tools & Alternatives
 
-| Tool                  | Purpose           | Alternative                       | When to Use Alternative |
-| --------------------- | ----------------- | --------------------------------- | ----------------------- |
-| SQLAlchemy            | ORM & connection  | psycopg2 direct                   | Simpler queries         |
-| psycopg2              | PostgreSQL driver | asyncpg                           | Async operations        |
-| Sentence-Transformers | Embeddings        | OpenAI API                        | Higher quality, cost    |
-| pgvector              | Vector storage    | Pinecone, Vertex AI Vector Search | Managed service         |
-
-### Airflow Integration
-
-```python
-load_financial = PythonOperator(
-    task_id='load_financial_profiles',
-    python_callable=postgres_loader.load_financial_profiles,
-    dag=dag
-)
-
-load_products = PythonOperator(
-    task_id='load_products',
-    python_callable=postgres_loader.load_products,
-    op_kwargs={'rating_variance_path': 'data/features/product_rating_variance.csv'},
-    dag=dag
-)
-
-load_reviews = PythonOperator(
-    task_id='load_reviews',
-    python_callable=postgres_loader.load_reviews,
-    dag=dag
-)
-
-generate_embeddings = PythonOperator(
-    task_id='generate_embeddings',
-    python_callable=vector_loader.generate_and_load,
-    dag=dag
-)
-
-[load_financial, load_products, load_reviews] >> generate_embeddings
-```
 
 ---
 
@@ -1359,35 +1049,9 @@ Mitigation is applied **only at model training time**. The raw dataset is not mo
 
 ---
 
-### Tools & Alternatives
 
-| Tool               | Purpose                    | Alternative   | When to Use Alternative             |
-| ------------------ | -------------------------- | ------------- | ----------------------------------- |
-| Fairlearn          | Bias metrics & analysis    | AIF360        | More comprehensive fairness toolkit |
-| Pandas groupby     | Manual slice analysis      | Custom Python | Full control                        |
-| SliceFinder        | Automatic slice discovery  | —             | Exploratory analysis                |
-| Matplotlib/Seaborn | Distribution visualization | Plotly        | Interactive charts                  |
 
-### Airflow Integration
-
-```python
-bias_financial = PythonOperator(
-    task_id='bias_analysis_financial',
-    python_callable=bias.analyze_financial_bias,
-    dag=dag
-)
-
-bias_products = PythonOperator(
-    task_id='bias_analysis_products',
-    python_callable=bias.analyze_product_bias,
-    dag=dag
-)
-
-# Run in parallel since they analyze independent tracks.
-[bias_financial, bias_products] >> complete
-```
-
-### Future: Decision Outcome Bias (Phase 3)
+### Future: Decision Outcome Bias (In Model Development)
 
 Once the Deterministic Financial Logic Engine is built, a separate bias analysis should test:
 
@@ -1466,29 +1130,13 @@ Provide comprehensive coverage of all data modules and tasks before pipeline dep
 
 ### Implementation
 
-1. **Test Structure**
-   The `pytest` test suite is fully modularized and located under `tests/`. Tests have been separated into logic boundaries:
-
-   ```
-   tests/
-   ├── ingestion/
-   │   ├── __init__.py
-   │   └── test_gcs_loader.py       # Testing GCP blob mocks
-   ├── validation/
-   │   ├── test_raw_validator.py
-   │   └── ...
-   ├── bias/
-   ├── test_data_pipeline_airflow.py # DAG-level testing and operator mocking
-   └── ...
-   ```
-
-2. **Testing Standards Applied**
+1. **Testing Standards Applied**
    - **Mocking Extraneous Services**: Stubs are aggressively used (e.g., `_stub` in `test_data_pipeline_airflow.py` and `_stub_google` in `test_gcs_loader.py`) to effectively isolate module tests from requiring active GCP or Airflow metadata connections.
    - **Format Standard:** All test files include module docstrings, section dividers, and structural comments.
    - **Bias Detection Validation:** The bias detection modules (`financial_bias.py`, `product_bias.py`, `review_bias.py`, `run_bias.py`) are exercised end-to-end by running `python3 src/bias/run_bias.py` against the engineered datasets. The logged outputs and the \"Bias Detection Report\" section above form the test oracle for Phase 15.
 
-3. **Running the Tests**
-   - `pytest tests/ -v`
+2. **Running the Tests**
+   - `pytest <path_to_tests>/tests/ -v`
 
 ---
 
