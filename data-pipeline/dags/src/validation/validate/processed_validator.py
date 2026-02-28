@@ -460,7 +460,8 @@ def run_processed_validation(
 if __name__ == "__main__":
     import argparse
 
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+    from src.utils import setup_logging
+    setup_logging()
 
     parser = argparse.ArgumentParser(description="Validate processed SavVio data")
     parser.add_argument("--financial", default="data/processed/financial_preprocessed.csv")

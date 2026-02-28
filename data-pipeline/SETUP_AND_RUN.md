@@ -9,8 +9,8 @@ This guide provides step-by-step instructions to **set up the environment and ru
 ## Prerequisites
 
 - **Docker** and **Docker Compose** installed  
-  - **Minimum resources**: 4GB RAM, 2 CPUs, ~10GB free disk  
-  - **Recommended**: 8–10GB RAM and 4+ CPUs for smoother Airflow execution
+- **Minimum resources**: 6GB RAM (4GB allocated to Docker), 2 CPUs, ~10GB free disk  
+  - **Recommended**: 8–10GB RAM (6GB allocated to Docker) and 4+ CPUs for smoother Airflow execution and DuckDB out-of-core merging
 - **Git** (to clone the repo)
 - Python 3.12+
 - **PostgreSQL** reachable from Docker for pipeline outputs (**separate from Airflow's bundled Postgres**)  

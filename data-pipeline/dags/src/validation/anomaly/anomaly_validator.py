@@ -200,7 +200,8 @@ def run_anomaly_validation(
 
 if __name__ == "__main__":
     import argparse
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+    from src.utils import setup_logging
+    setup_logging()
 
     parser = argparse.ArgumentParser(description="Run Anomaly Detection (Financial Only)")
     parser.add_argument("tier", choices=["raw", "featured"], help="Which tier to run")

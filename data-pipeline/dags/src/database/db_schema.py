@@ -5,7 +5,7 @@ Matches the actual columns from preprocessing (see Data Pipeline Plan).
 
 from sqlalchemy import (
     Column, Integer, Float, String, Boolean, Text, DateTime, ForeignKey,
-    func, JSON, text
+    UniqueConstraint, JSON, text
 )
 from sqlalchemy.orm import declarative_base
 
@@ -38,7 +38,8 @@ class FinancialProfile(Base):
     saving_to_income_ratio       = Column(Float)
     monthly_expense_burden_ratio = Column(Float)
     emergency_fund_months = Column(Float)
-    created_at            = Column(DateTime, server_default=func.now())
+    created_at            = Column(DateTime, server_default=text("CURRENT_TIMESTAMP"))
+    updated_at            = Column(DateTime, server_default=text("CURRENT_TIMESTAMP"))
 
 
 # ---------------------------------------------------------------------------
@@ -59,7 +60,8 @@ class Product(Base):
     features        = Column(Text)
     details         = Column(JSON)        # stored as JSONB in PostgreSQL
     category        = Column(Text)
-    created_at      = Column(DateTime, server_default=func.now())
+    created_at      = Column(DateTime, server_default=text("CURRENT_TIMESTAMP"))
+    updated_at      = Column(DateTime, server_default=text("CURRENT_TIMESTAMP"))
 
 
 # ---------------------------------------------------------------------------
@@ -68,32 +70,26 @@ class Product(Base):
 
 class Review(Base):
     __tablename__ = "reviews"
+    __table_args__ = (
+        UniqueConstraint("user_id", "product_id", name="uq_reviews_user_product"),
+    )
 
     id                = Column(Integer, primary_key=True, autoincrement=True)
-    user_id           = Column(String(255))
+    user_id           = Column(String(255), nullable=False)
     asin              = Column(String(100))
-    product_id        = Column(String(100), ForeignKey("products.product_id"))
+    product_id        = Column(String(100), ForeignKey("products.product_id"), nullable=False)
     rating            = Column(Float, nullable=False)
     review_title      = Column(Text)
     review_text       = Column(Text)
     verified_purchase = Column(Boolean)
     helpful_vote      = Column(Integer, default=0)
-    created_at        = Column(DateTime, server_default=func.now())
+    created_at        = Column(DateTime, server_default=text("CURRENT_TIMESTAMP"))
+    updated_at        = Column(DateTime, server_default=text("CURRENT_TIMESTAMP"))
 
 
 # ---------------------------------------------------------------------------
 # Helper to create all tables
 # ---------------------------------------------------------------------------
-
-def drop_tables(engine):
-    """Drop all tables that exist in the database."""
-    # Embedding tables are created via raw SQL in vector_embed.py, so SQLAlchemy's drop_all
-    # doesn't know about them. We must drop them manually first to clear foreign key constraints.
-    with engine.begin() as conn:
-        conn.execute(text("DROP TABLE IF EXISTS review_embeddings CASCADE;"))
-        conn.execute(text("DROP TABLE IF EXISTS product_embeddings CASCADE;"))
-        
-    Base.metadata.drop_all(engine)
 
 def create_tables(engine):
     """Create all tables that don't already exist."""

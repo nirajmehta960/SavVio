@@ -124,6 +124,8 @@ def run_review_features(
         logger.info(f"Processing products in chunks from {products_path}...")
         ensure_output_dir(product_output_path)
         
+        # Write new product features to temp file to preserve existing for merge.
+        temp_product_output = product_output_path + ".new.tmp"
         first_chunk = True
         n_matched = 0
         n_total_products = 0
@@ -135,21 +137,34 @@ def run_review_features(
             
             n_matched += chunk_featured["rating_variance"].gt(0).sum()
             
-            # Write chunk to file
+            # Write chunk to temp file
             mode = 'w' if first_chunk else 'a'
-            chunk_featured.to_json(product_output_path, orient="records", lines=True, mode=mode)
+            chunk_featured.to_json(temp_product_output, orient="records", lines=True, mode=mode)
             first_chunk = False
 
         logger.info(
             f"Merged rating_variance onto products — "
             f"{n_matched}/{n_total_products} products had review data."
         )
+
+        # --- Incremental merge: product featured output ---
+        if os.path.exists(product_output_path) and os.path.getsize(product_output_path) > 0:
+            from src.incremental import merge_jsonl
+            merge_stats = merge_jsonl(
+                temp_product_output, product_output_path, key_cols=["product_id"]
+            )
+            os.remove(temp_product_output)
+            logger.info("Product incremental merge stats: %s", merge_stats)
+        else:
+            os.replace(temp_product_output, product_output_path)
         logger.info(f"Saved enriched products to {product_output_path}")
 
         # --------------------------------------------------------------
-        # Save review_featured.jsonl (Zero-memory pass-through copy!)
+        # Save review_featured.jsonl (pass-through copy)
+        # No incremental merge needed here — the merge already happened
+        # at the preprocessing step. This file is just a copy.
         # --------------------------------------------------------------
-        logger.info(f"Copying reviews verbatim to {review_output_path} (pass-through)...")
+        logger.info(f"Copying reviews to {review_output_path} (pass-through)...")
         ensure_output_dir(review_output_path)
         shutil.copyfile(reviews_path, review_output_path)
         logger.info(f"Saved reviews copy to {review_output_path}")

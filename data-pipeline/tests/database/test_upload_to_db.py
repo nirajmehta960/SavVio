@@ -4,7 +4,7 @@ Tests for Load to Database — upload_to_db.py.
 Covers the module that loads feature-engineered data (CSV/JSONL) into
 PostgreSQL tables: financial_profiles, products, reviews.
 Includes helper functions (_read_csv, _read_jsonl, _select_and_rename,
-_ensure_jsonb, _truncate_table) and the three loaders + load_all orchestrator.
+_ensure_jsonb, _upsert_df) and the three loaders + load_all orchestrator.
 """
 import json
 import os
@@ -196,7 +196,7 @@ def test_review_cols_has_required_keys():
 
 
 # =============================================================================
-# 6) load_financial tests
+# 6) _upsert_df tests
 # =============================================================================
 
 def _mock_engine():
@@ -210,6 +210,49 @@ def _mock_engine():
     return engine, conn
 
 
+def test_upsert_df_empty_dataframe():
+    engine, conn = _mock_engine()
+    df = pd.DataFrame(columns=["user_id", "name"])
+    result = M._upsert_df(engine, df, "test_table", ["user_id"], ["name"])
+    assert result == 0
+    engine.begin.assert_not_called()
+
+
+def test_upsert_df_builds_correct_sql():
+    engine, conn = _mock_engine()
+    df = pd.DataFrame([{"user_id": "u1", "name": "Alice"}])
+    M._upsert_df(engine, df, "test_table", ["user_id"], ["name"])
+    conn.execute.assert_called_once()
+    sql_text = str(conn.execute.call_args[0][0])
+    assert "INSERT INTO test_table" in sql_text
+    assert "ON CONFLICT (user_id)" in sql_text
+    assert "name = EXCLUDED.name" in sql_text
+    assert "updated_at = CURRENT_TIMESTAMP" in sql_text
+
+
+def test_upsert_df_returns_row_count():
+    engine, conn = _mock_engine()
+    df = pd.DataFrame([
+        {"user_id": "u1", "name": "Alice"},
+        {"user_id": "u2", "name": "Bob"},
+    ])
+    result = M._upsert_df(engine, df, "test_table", ["user_id"], ["name"])
+    assert result == 2
+
+
+def test_upsert_df_composite_conflict_cols():
+    engine, conn = _mock_engine()
+    df = pd.DataFrame([{"user_id": "u1", "product_id": "p1", "rating": 5}])
+    M._upsert_df(engine, df, "reviews", ["user_id", "product_id"], ["rating"])
+    sql_text = str(conn.execute.call_args[0][0])
+    assert "ON CONFLICT (user_id, product_id)" in sql_text
+    assert "rating = EXCLUDED.rating" in sql_text
+
+
+# =============================================================================
+# 7) load_financial tests
+# =============================================================================
+
 def test_load_financial_reads_and_loads(tmp_path):
     p = tmp_path / "financial_featured.csv"
     pd.DataFrame([{
@@ -218,25 +261,17 @@ def test_load_financial_reads_and_loads(tmp_path):
     }]).to_csv(p, index=False)
 
     engine, conn = _mock_engine()
-    with patch.object(M, "_truncate_table"):
-        with patch("pandas.DataFrame.to_sql") as mock_to_sql:
-            result = M.load_financial(engine, str(p), truncate=True)
+    with patch.object(M, "_upsert_df", return_value=1) as mock_upsert:
+        result = M.load_financial(engine, str(p))
     assert result == 1
-
-
-def test_load_financial_no_truncate(tmp_path):
-    p = tmp_path / "fin.csv"
-    pd.DataFrame([{"user_id": "u1", "monthly_income": 5000}]).to_csv(p, index=False)
-
-    engine, conn = _mock_engine()
-    with patch.object(M, "_truncate_table") as mock_trunc:
-        with patch("pandas.DataFrame.to_sql"):
-            M.load_financial(engine, str(p), truncate=False)
-    mock_trunc.assert_not_called()
+    mock_upsert.assert_called_once()
+    call_args = mock_upsert.call_args
+    assert call_args[0][2] == "financial_profiles"
+    assert call_args[0][3] == ["user_id"]
 
 
 # =============================================================================
-# 7) load_products tests
+# 8) load_products tests
 # =============================================================================
 
 def test_load_products_reads_jsonl(tmp_path):
@@ -248,14 +283,17 @@ def test_load_products_reads_jsonl(tmp_path):
         }) + "\n")
 
     engine, conn = _mock_engine()
-    with patch.object(M, "_truncate_table"):
-        with patch("pandas.DataFrame.to_sql"):
-            result = M.load_products(engine, str(p), truncate=True)
+    with patch.object(M, "_upsert_df", return_value=1) as mock_upsert:
+        result = M.load_products(engine, str(p))
     assert result == 1
+    mock_upsert.assert_called_once()
+    call_args = mock_upsert.call_args
+    assert call_args[0][2] == "products"
+    assert call_args[0][3] == ["product_id"]
 
 
 # =============================================================================
-# 8) load_reviews tests
+# 9) load_reviews tests
 # =============================================================================
 
 def test_load_reviews_reads_jsonl(tmp_path):
@@ -270,11 +308,14 @@ def test_load_reviews_reads_jsonl(tmp_path):
     engine, conn = _mock_engine()
     # Mock the product_id lookup (simulates existing products in DB)
     mock_read_sql = pd.DataFrame({"product_id": ["p1"]})
-    with patch.object(M, "_truncate_table"), \
-         patch("pandas.read_sql", return_value=mock_read_sql), \
-         patch("pandas.DataFrame.to_sql"):
-        result = M.load_reviews(engine, str(p), truncate=True)
+    with patch("pandas.read_sql", return_value=mock_read_sql), \
+         patch.object(M, "_upsert_df", return_value=1) as mock_upsert:
+        result = M.load_reviews(engine, str(p))
     assert result == 1
+    mock_upsert.assert_called_once()
+    call_args = mock_upsert.call_args
+    assert call_args[0][2] == "reviews"
+    assert call_args[0][3] == ["user_id", "product_id"]
 
 
 def test_load_reviews_drops_orphan_reviews(tmp_path):
@@ -285,15 +326,18 @@ def test_load_reviews_drops_orphan_reviews(tmp_path):
 
     engine, conn = _mock_engine()
     mock_read_sql = pd.DataFrame({"product_id": ["p1"]})  # only p1 exists
-    with patch.object(M, "_truncate_table"), \
-         patch("pandas.read_sql", return_value=mock_read_sql), \
-         patch("pandas.DataFrame.to_sql"):
-        result = M.load_reviews(engine, str(p), truncate=True)
+    with patch("pandas.read_sql", return_value=mock_read_sql), \
+         patch.object(M, "_upsert_df", return_value=1) as mock_upsert:
+        result = M.load_reviews(engine, str(p))
     assert result == 1  # orphan review filtered out
+    # Verify only 1 row was passed to upsert (the orphan was dropped)
+    upserted_df = mock_upsert.call_args[0][1]
+    assert len(upserted_df) == 1
+    assert upserted_df.iloc[0]["product_id"] == "p1"
 
 
 # =============================================================================
-# 9) load_all tests
+# 10) load_all tests
 # =============================================================================
 
 def test_load_all_calls_all_loaders():
@@ -305,29 +349,7 @@ def test_load_all_calls_all_loaders():
          patch.object(M, "load_reviews", return_value=30) as mock_rev:
         result = M.load_all("/fin.csv", "/prod.jsonl", "/rev.jsonl")
 
-    mock_fin.assert_called_once_with(mock_engine, "/fin.csv", True)
-    mock_prod.assert_called_once_with(mock_engine, "/prod.jsonl", True)
-    mock_rev.assert_called_once_with(mock_engine, "/rev.jsonl", True)
+    mock_fin.assert_called_once_with(mock_engine, "/fin.csv")
+    mock_prod.assert_called_once_with(mock_engine, "/prod.jsonl")
+    mock_rev.assert_called_once_with(mock_engine, "/rev.jsonl")
     assert result == {"financial_profiles": 10, "products": 20, "reviews": 30}
-
-
-
-
-# =============================================================================
-# 10) _truncate_table
-# =============================================================================
-
-def test_truncate_table_executes_cascade_sql():
-    engine = MagicMock()
-    conn = MagicMock()
-    cm = MagicMock()
-    cm.__enter__ = MagicMock(return_value=conn)
-    cm.__exit__ = MagicMock(return_value=False)
-    engine.begin.return_value = cm
-    M._truncate_table(engine, "products")
-    conn.execute.assert_called_once()
-    sql = str(conn.execute.call_args[0][0])
-    assert "TRUNCATE" in sql
-    assert "products" in sql
-    assert "CASCADE" in sql
-

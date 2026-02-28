@@ -2,6 +2,7 @@
 # Core Data Processing
 # -----------------------------------------------------------------------------
 pandas>=2.1.4
+duckdb>=1.0.0
 numpy>=1.26.2
 scikit-learn 
 flask # maybe remove after testing
@@ -93,24 +94,3 @@ python-json-logger>=2.0.7
 # -----------------------------------------------------------------------------
 tqdm>=4.66.1  # Progress bars
 tabulate>=0.9.0  # Pretty-print tables
-
-# =============================================================================
-# Installation Instructions
-# =============================================================================
-# 
-# Option 1: Install all dependencies
-#   pip install -r requirements.txt
-#
-# Option 2: Install in a virtual environment (recommended)
-#   python -m venv venv
-#   source venv/bin/activate  # On Windows: venv\Scripts\activate
-#   pip install -r requirements.txt
-#
-# Option 3: Install with Airflow constraints (recommended for Airflow)
-#   AIRFLOW_VERSION=2.8.0
-#   PYTHON_VERSION="$(python --version | cut -d " " -f 2 | cut -d "." -f 1-2)"
-#   CONSTRAINT_URL="https://raw.githubusercontent.com/apache/airflow/constraints-${AIRFLOW_VERSION}/constraints-${PYTHON_VERSION}.txt"
-#   pip install -r requirements.txt --constraint "${CONSTRAINT_URL}"
-#
-# Note: For Docker-based Airflow setup, dependencies are managed in Dockerfile
-# =============================================================================

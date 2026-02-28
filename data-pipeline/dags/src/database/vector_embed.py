@@ -344,7 +344,8 @@ def run_embed(
 if __name__ == "__main__":
     import argparse
 
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+    from src.utils import setup_logging
+    setup_logging()
 
     parser = argparse.ArgumentParser(description="Generate & store embeddings (products + reviews)")
     parser.add_argument("--products", required=True, help="Path to processed products file")

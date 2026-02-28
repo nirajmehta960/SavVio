@@ -14,10 +14,8 @@ from google.cloud import storage
 from google.oauth2 import service_account
 
 # Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='[%(asctime)s] [%(levelname)s] [%(name)s] %(message)s'
-)
+from src.utils import setup_logging
+setup_logging()
 logger = logging.getLogger(__name__)
 
 
@@ -58,7 +56,8 @@ class GCSLoader:
         destination_path: str
     ) -> str:
         """
-        Download a single blob from GCS bucket.
+        Download a single blob from GCS bucket if it has changed.
+        Compares remote MD5 with local file MD5 to skip unchanged files.
         Data versioning and caching are handled by DVC when tracking this directory.
         
         Args:
@@ -87,7 +86,21 @@ class GCSLoader:
                     f"Blob '{blob_name}' not found in bucket '{bucket_name}'"
                 )
             
-            # Download the blob
+            # --- Incremental: skip download if local file matches remote ---
+            blob.reload()  # fetch metadata including md5_hash
+            remote_md5 = blob.md5_hash  # base64-encoded MD5
+            if remote_md5 and os.path.exists(destination_path):
+                import base64, hashlib
+                local_md5 = hashlib.md5(open(destination_path, "rb").read()).digest()
+                local_md5_b64 = base64.b64encode(local_md5).decode()
+                if local_md5_b64 == remote_md5:
+                    logger.info(
+                        f"File unchanged (MD5 match) — skipping download: "
+                        f"gs://{bucket_name}/{blob_name}"
+                    )
+                    return destination_path
+            
+            # Download the blob (file is new or has changed)
             logger.info(f"Downloading gs://{bucket_name}/{blob_name} to {destination_path}")
             blob.download_to_filename(destination_path)
             

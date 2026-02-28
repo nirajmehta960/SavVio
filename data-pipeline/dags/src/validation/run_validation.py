@@ -197,10 +197,8 @@ STAGE_MAP = {
 def main():
     import argparse
 
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s [%(levelname)s] %(name)s — %(message)s",
-    )
+    from src.utils import setup_logging
+    setup_logging()
 
     parser = argparse.ArgumentParser(description="SavVio Data Validation Runner")
     parser.add_argument(

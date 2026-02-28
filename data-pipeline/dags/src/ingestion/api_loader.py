@@ -16,10 +16,8 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
 # Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='[%(asctime)s] [%(levelname)s] [%(name)s] %(message)s'
-)
+from src.utils import setup_logging
+setup_logging()
 logger = logging.getLogger(__name__)
 
 

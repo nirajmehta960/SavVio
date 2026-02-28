@@ -45,11 +45,10 @@ def _setup():
 #TODO: data added to DB might change after bias detection and mitigation
 
 def setup_database_task(**context):
-    """Airflow task: drop and recreate PostgreSQL tables."""
-    logger.info(">>> Setting up database schema (dropping old tables)...")
+    """Airflow task: create PostgreSQL tables if they don't already exist."""
+    logger.info(">>> Setting up database schema (create if not exists)...")
     engine = get_engine()
-    from db_schema import drop_tables, create_tables
-    drop_tables(engine)
+    from db_schema import create_tables
     create_tables(engine)
     logger.info(">>> Database Setup: SUCCESS")
 
@@ -107,10 +106,8 @@ def generate_and_load_embedding_task(**context):
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s [%(levelname)s] %(message)s",
-    )
+    from src.utils import setup_logging
+    setup_logging()
     logger.info("Running full database loading pipeline...")
     load_financial_task()
     load_products_task()
