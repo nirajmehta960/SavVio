@@ -71,6 +71,11 @@ def merge_csv(
     partition_clause = ", ".join(key_cols)
     temp_out = existing_path + ".duckdb.tmp"
 
+    # Set DuckDB configuration
+    # Memory limit - Increase when docker has access to more memory 
+    # Threads - Increase when docker has access to more CPU
+    # preserve_insertion_order=false - order of records is not preserved - needs less memory
+    # temp_directory='/tmp' - duckdb instead of using memory, saves partial work to /tmp and reads back from /tmp
     with duckdb.connect() as con:
         con.execute("PRAGMA temp_directory='/tmp';")
         con.execute("PRAGMA memory_limit='2GB';")
