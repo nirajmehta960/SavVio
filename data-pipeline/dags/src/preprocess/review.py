@@ -96,7 +96,7 @@ def _to_bool(value: object) -> bool:
 
 def _process_batch(
     records: List[Dict[str, object]],
-    seen_review_keys: Set[Tuple[str, str, str]],
+    seen_review_keys: Set[Tuple[str, str]],
     stats: PreprocessStats,
 ) -> pd.DataFrame:
     """Apply deterministic transformations to one DataFrame batch."""
@@ -142,8 +142,8 @@ def _process_batch(
     df["helpful_vote"] = pd.to_numeric(df["helpful_vote"], errors="coerce").fillna(0).astype(int)
     df["verified_purchase"] = df["verified_purchase"].apply(_to_bool).astype(bool)
 
-    # Global duplicate key: (asin + user_id + text)
-    keys = list(zip(df["asin"], df["user_id"], df["text"]))
+    # Global duplicate key: (asin + user_id)
+    keys = list(zip(df["asin"], df["user_id"]))
     keep_mask = []
     for key in keys:
         if key in seen_review_keys:
@@ -183,7 +183,7 @@ def preprocess_review_data(input_path: str, output_path: str) -> pd.DataFrame:
     ensure_output_dir(output_path)
 
     stats = PreprocessStats()
-    seen_review_keys: Set[Tuple[str, str, str]] = set()
+    seen_review_keys: Set[Tuple[str, str]] = set()
     discovered_columns: Set[str] = set()
     batch_records: List[Dict[str, object]] = []
     sample_frames: List[pd.DataFrame] = []
@@ -267,7 +267,7 @@ def preprocess_review_data(input_path: str, output_path: str) -> pd.DataFrame:
     )
     LOGGER.info("Raw rows loaded: %d", stats.raw_rows_loaded)
     LOGGER.info("Malformed JSON rows skipped: %d", stats.malformed_json_rows_skipped)
-    LOGGER.info("Duplicates removed ((asin + user_id + text)): %d", stats.duplicates_removed)
+    LOGGER.info("Duplicates removed ((asin + user_id)): %d", stats.duplicates_removed)
     LOGGER.info(
         "Rows dropped (missing IDs or ratings): %d",
         stats.removed_missing_parent_asin + stats.removed_missing_user_id + stats.removed_missing_rating,

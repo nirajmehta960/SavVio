@@ -2,6 +2,7 @@
 # Core Data Processing
 # -----------------------------------------------------------------------------
 pandas>=2.1.4
+duckdb>=1.0.0
 numpy>=1.26.2
 scikit-learn 
 flask # maybe remove after testing
