@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from dataclasses import dataclass
 from typing import Dict, List, Set, Tuple
 
@@ -187,11 +188,12 @@ def preprocess_review_data(input_path: str, output_path: str) -> pd.DataFrame:
     batch_records: List[Dict[str, object]] = []
     sample_frames: List[pd.DataFrame] = []
 
-    # Start with a clean output file.
-    open(output_path, "w", encoding="utf-8").close()
+    # Write to temp file to preserve existing output for incremental merge.
+    new_output_path = output_path + ".new.tmp"
+    open(new_output_path, "w", encoding="utf-8").close()
 
     LOGGER.info("Loading JSONL stream from: %s", input_path)
-    with open(input_path, "r", encoding="utf-8") as infile, open(output_path, "a", encoding="utf-8") as outfile:
+    with open(input_path, "r", encoding="utf-8") as infile, open(new_output_path, "a", encoding="utf-8") as outfile:
         for raw_line in infile:
             stats.raw_rows_loaded += 1
             line = raw_line.strip()
@@ -247,6 +249,18 @@ def preprocess_review_data(input_path: str, output_path: str) -> pd.DataFrame:
         final_sample = pd.DataFrame(columns=FINAL_COLUMNS)
 
     _print_snapshot(final_sample, title=f"Final Review Sample (rows saved: {stats.final_rows})", rows=5)
+
+    # --- Incremental merge: merge new output with existing preprocessed file ---
+    if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
+        from src.incremental import merge_jsonl
+        merge_stats = merge_jsonl(
+            new_output_path, output_path, key_cols=["user_id", "product_id"]
+        )
+        os.remove(new_output_path)
+        LOGGER.info("Incremental merge stats: %s", merge_stats)
+    else:
+        # First run — just move temp to output.
+        os.replace(new_output_path, output_path)
 
     LOGGER.info(
         "Dropped fields timestamp/images: not useful for text embeddings or sentiment analytics and add noise."

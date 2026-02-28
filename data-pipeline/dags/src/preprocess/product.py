@@ -180,9 +180,10 @@ def preprocess_product_data(input_path: str, output_path: str) -> pd.DataFrame:
     ensure_output_dir(output_path)
 
     stage1_path = f"{output_path}.stage1.tmp"
+    new_output_path = f"{output_path}.new.tmp"  # write new data here to preserve existing
     # Reset stage files for deterministic reruns.
     open(stage1_path, "w", encoding="utf-8").close()
-    open(output_path, "w", encoding="utf-8").close()
+    open(new_output_path, "w", encoding="utf-8").close()
 
     stats = ProductStats()
     seen_parent_asins: Set[str] = set()
@@ -274,7 +275,7 @@ def preprocess_product_data(input_path: str, output_path: str) -> pd.DataFrame:
 
     # Pass 2: impute missing prices and write final output.
     final_samples: List[Dict[str, object]] = []
-    with open(stage1_path, "r", encoding="utf-8") as stage1, open(output_path, "a", encoding="utf-8") as out:
+    with open(stage1_path, "r", encoding="utf-8") as stage1, open(new_output_path, "a", encoding="utf-8") as out:
         for raw_line in stage1:
             record = json.loads(raw_line)
             price_val = record.get("price")
@@ -305,6 +306,16 @@ def preprocess_product_data(input_path: str, output_path: str) -> pd.DataFrame:
                 final_samples.append(final_record)
 
     os.remove(stage1_path)
+
+    # --- Incremental merge: merge new output with existing preprocessed file ---
+    if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
+        from src.incremental import merge_jsonl
+        merge_stats = merge_jsonl(new_output_path, output_path, key_cols=["product_id"])
+        os.remove(new_output_path)
+        LOGGER.info("Incremental merge stats: %s", merge_stats)
+    else:
+        # First run — just move temp to output.
+        os.replace(new_output_path, output_path)
 
     initial_view = pd.DataFrame(columns=sorted(discovered_columns))
     _print_frame_snapshot(

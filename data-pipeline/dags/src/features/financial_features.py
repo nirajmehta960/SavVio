@@ -96,9 +96,19 @@ def run_financial_features(input_path: str, output_path: str) -> None:
 
         numeric_cols = ["discretionary_income", *ratio_cols]
 
-        # Persist output dataset.
+        # Persist output dataset with incremental merge.
         ensure_output_dir(output_path)
-        df.to_csv(output_path, index=False)
+        temp_output = output_path + ".new.tmp"
+        df.to_csv(temp_output, index=False)
+
+        if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
+            from src.incremental import merge_csv
+            merge_stats = merge_csv(temp_output, output_path, key_cols=["user_id"])
+            os.remove(temp_output)
+            logger.info("Incremental merge stats: %s", merge_stats)
+        else:
+            os.replace(temp_output, output_path)
+
         logger.info(f"Saved featured data to {output_path}")
         logger.info(f"Sample features:\n{df[numeric_cols].head()}")
 
