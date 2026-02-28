@@ -8,9 +8,14 @@ This guide provides step-by-step instructions to **set up the environment and ru
 
 ## Prerequisites
 
-- **Docker** and **Docker Compose** installed
+- **Docker** and **Docker Compose** installed  
+  - **Minimum resources**: 4GB RAM, 2 CPUs, ~10GB free disk  
+  - **Recommended**: 8–10GB RAM and 4+ CPUs for smoother Airflow execution
 - **Git** (to clone the repo)
 - Python 3.12+
+- **PostgreSQL** reachable from Docker for pipeline outputs (**separate from Airflow's bundled Postgres**)  
+  - Set via `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD` in `.env`  
+  - `pgvector` extension must be available/enabled (pipeline will attempt `CREATE EXTENSION IF NOT EXISTS vector`)
 - A **Gmail account** with an App Password (for email notifications)
 - **Google Cloud SDK** (optional; for direct GCS access)
 
