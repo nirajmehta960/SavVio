@@ -20,7 +20,7 @@ def evaluate_model(model, X_test, y_test):
         roc_auc = roc_auc_score(y_test, y_prob)
         metrics["roc_auc"] = roc_auc
         
-    print(f"📊 Evaluation Results:")
+    print(f"Evaluation Results:")
     for k, v in metrics.items():
         print(f"  - {k}: {v:.4f}")
         

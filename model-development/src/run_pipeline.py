@@ -16,7 +16,7 @@ import mlflow
 from sklearn.model_selection import train_test_split
 
 def main():
-    print("🚀 Starting End-to-End ML Pipeline...")
+    print("Starting End-to-End ML Pipeline...")
     
     # 1. Initialization and configuration
     mlflow.set_tracking_uri(Config.MLFLOW_TRACKING_URI)
@@ -89,8 +89,8 @@ def main():
                 best_f1_score = metrics["f1_score"]
                 best_run_id = mlflow.active_run().info.run_id
 
-    print("\n🎉 Pipeline Complete!")
-    print(f"🏆 Best F1-Score: {best_f1_score:.4f} in Run ID: {best_run_id}")
+    print("\nPipeline Complete!")
+    print(f"Best F1-Score: {best_f1_score:.4f} in Run ID: {best_run_id}")
     
     # 5. Registry Handoff
     # Automatically register the best performing run as the active model version

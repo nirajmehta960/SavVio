@@ -27,7 +27,7 @@ def preprocess_features(df: pd.DataFrame, is_training: bool = True):
         os.makedirs(Config.MODEL_SAVE_DIR, exist_ok=True)
         encoder_path = os.path.join(Config.MODEL_SAVE_DIR, "categorical_encoder.pkl")
         joblib.dump(encoder, encoder_path)
-        print(f"✅ OrdinalEncoder fitted and saved to {encoder_path}")
+        print(f"OrdinalEncoder fitted and saved to {encoder_path}")
     else:
         # NOTE: At inference time, you would load the encoder downloaded from MLflow
         # This branch is just a placeholder for the future FastAPI integration.

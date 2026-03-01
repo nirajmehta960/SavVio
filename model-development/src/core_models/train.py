@@ -12,7 +12,7 @@ def train_model(model_type: str, X_train: pd.DataFrame, y_train: pd.Series, para
     Trains a model of `model_type` using the provided hyperparameters.
     Supported types: 'xgboost', 'lightgbm', 'linearboost'
     """
-    print(f"🚀 Training {model_type}...")
+    print(f" Training {model_type}...")
 
     if model_type == 'xgboost':
         # Default XGBoost Tree
@@ -30,7 +30,7 @@ def train_model(model_type: str, X_train: pd.DataFrame, y_train: pd.Series, para
         model.fit(X_train, y_train)
 
     else:
-        raise ValueError(f"❌ Unsupported model_type: {model_type}")
+        raise ValueError(f" Unsupported model_type: {model_type}")
 
     return model
 
