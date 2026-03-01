@@ -60,7 +60,7 @@ mkdir -p logs plugins
    AIRFLOW_UID=501
    
    # Directory to mount your pipeline to Airflow 
-   AIRFLOW_PROJ_DIR=./data-pipeline
+   AIRFLOW_PROJ_DIR=.
 
    # Credentials for the Airflow UI user (Used in docker-compose.yml)
    _AIRFLOW_WWW_USER_USERNAME=airflow
