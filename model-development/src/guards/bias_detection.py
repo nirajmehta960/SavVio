@@ -8,7 +8,7 @@ def evaluate_bias(y_test, y_pred, sensitive_features: pd.DataFrame):
     Uses Fairlearn to detect bias in the model based on sensitive attributes
     (e.g., gender, region). Logs unfairness metrics directly to MLflow.
     """
-    print("\n⚖️ Running Bias & Fairness Detection...")
+    print("\nRunning Bias & Fairness Detection...")
     
     # MLflow metrics dictionary for tracking
     fairness_metrics = {}
