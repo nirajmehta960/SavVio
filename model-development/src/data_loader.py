@@ -7,10 +7,10 @@ def load_data(filepath: str = Config.DATA_PATH) -> pd.DataFrame:
     """
     try:
         df = pd.read_csv(filepath)
-        print(f"✅ Data loaded successfully. Shape: {df.shape}")
+        print(f"Data loaded successfully. Shape: {df.shape}")
         return df
     except FileNotFoundError:
-        print(f"❌ Error: Data file not found at {filepath}")
+        print(f"Error: Data file not found at {filepath}")
         print("Make sure the Airflow pipeline has run and exported financial_featured.csv to temp_data/")
         raise
 
