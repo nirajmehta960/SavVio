@@ -30,14 +30,15 @@ cd SavVio
 Create the required directories and set up permissions:
 
 ```bash
-mkdir -p logs plugins
+mkdir -p data-pipeline/logs data-pipeline/plugins
 ```
 
 > **Note:** Do not use `echo` commands to append variables to your `.env` file. Instead, use the provided `.env.example` template to manually map your configurations.
 
 1. **Copy the environment template:**
    ```bash
-   cp .env.example .env
+   cd data-pipeline
+   cp ../.env.example .env
    ```
 
 2. **Configure your `.env` file:**
@@ -111,12 +112,14 @@ The **entire data pipeline** will run via Docker Compose, with the single except
 1. **Initialize the database** (this will take a couple of minutes):
  
 ```bash
+cd data-pipeline
 docker compose up airflow-init
 ```
 
 2. **Run the Pipeline Cluster**
 
 ```bash
+cd data-pipeline
 docker compose up -d
 ```
 
@@ -138,18 +141,21 @@ Wait until the terminal outputs that the services are "healthy" or "running" (e.
 ### Stop Airflow (keep data)
 
 ```bash
+cd data-pipeline
 docker compose down
 ```
 
 ### Stop Airflow (delete all data)
 
 ```bash
+cd data-pipeline
 docker compose down -v
 ```
 
 ### Restart Airflow
 
 ```bash
+cd data-pipeline
 docker compose up -d
 ```
 
