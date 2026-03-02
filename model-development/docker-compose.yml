@@ -1,3 +1,14 @@
+# =============================================================================
+# SavVio ML Pipeline — Docker Compose
+# =============================================================================
+# Services:
+#   - postgres:       MLflow metadata backend (port 5433 to avoid conflict with Airflow's 5432)
+#   - storage:        Local S3-compatible artifact store (RustFS)
+#   - create-bucket:  One-shot init to create the S3 bucket
+#   - mlflow:         MLflow tracking server UI + API
+#   - ml-trainer:     The compute environment where model training code runs
+# =============================================================================
+
 volumes:
   pgdata:
   storage-data:
@@ -14,7 +25,8 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
     ports:
-      - "5432:5432"
+      # NOTE: Using 5433 on host to avoid conflict with data-pipeline Airflow Postgres (5432)
+      - "5433:5432"
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}" ]
       interval: 5s
@@ -127,26 +139,35 @@ services:
       timeout: 5s
       retries: 30
 
-  ml-dev:
+  # ============================================================
+  # ML Trainer — Compute environment for model training
+  # ============================================================
+  ml-trainer:
     build:
-      context: ../
-      dockerfile: ./model-development/Dockerfile
-    container_name: ml-dev-container
+      context: .
+      dockerfile: Dockerfile
+    container_name: savvio-ml-trainer
     tty: true
     stdin_open: true
     volumes:
-      - ../model-development:/app/model-development
-      - ../temp_data:/app/temp_data
+      - ./src:/app/src
+      - ./model:/app/model
       - ../data-pipeline/dags/data:/app/data
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [ gpu ]
+    environment:
+      MLFLOW_TRACKING_URI: http://mlflow-server:${MLFLOW_PORT}
     ports:
       - "8888:8888"
+    # ----------------------------------------------------------
+    # GPU/CUDA Support (Uncomment below when using nvidia/cuda Dockerfile)
+    # Requires: NVIDIA Container Toolkit installed on host
+    # ----------------------------------------------------------
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [ gpu ]
 
 networks:
   default:
