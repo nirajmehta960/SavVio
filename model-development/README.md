@@ -75,11 +75,11 @@ SavVio/
         ↓
 10. Deterministic Engine → Green / Yellow / Red
         ↓
-11. LLM Wrapping + NeMo Guardrails
+11. Model Registry Push (GCP)
         ↓
-12. Model Registry Push (GCP)
+12. CI/CD Automation (Dockerized)
         ↓
-13. CI/CD Automation (Dockerized)
+13. LLM Wrapping + NeMo Guardrails
 ```
 
 ---
@@ -101,10 +101,9 @@ SavVio/
 14. [Phase 13 — CI/CD Automation](#17-phase-13--cicd-automation)
 15. [Phase 14 — LLM Wrapping & Guardrails](#18-phase-14--llm-wrapping--guardrails)
 16. [Phase 15 — Monitoring & Dashboard](#19-phase-15--monitoring--dashboard)
-17. [Runbook](#runbook)
-18. [Testing](#testing)
-19. [Operational Risks & Guardrails](#operational-risks--guardrails)
-20. [Deliverable Checklist](#deliverable-checklist)
+17. [Phase 16 — Testing](#testing)
+18. [Phase 17 — Operational Risks & Guardrails](#operational-risks--guardrails)
+19. [Deliverable Checklist](#deliverable-checklist)
 
 ---
 
@@ -605,7 +604,7 @@ GitHub Actions / Cloud Build  [Dockerized]
 
 ---
 
-### 16. Testing
+### Phase 16 — Testing
 
 ```bash
 pytest model-development/tests
@@ -627,7 +626,7 @@ pytest model-development/tests
 
 ---
 
-### 17. Operational Risks & Guardrails
+### Phase 17 — Operational Risks & Guardrails
 
 ### Risks
 
