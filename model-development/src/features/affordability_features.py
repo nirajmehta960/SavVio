@@ -111,3 +111,100 @@ def compute_affordability(
     )
 
     return result
+
+
+# =============================================================================
+# Synthetic Scenario Generation & Labeling (Deterministic Engine)
+# =============================================================================
+# Used to create labeled training data by pairing real user financial profiles
+# with real products and applying rule-based labeling (GREEN / YELLOW / RED).
+# This bridges the gap between the pre-computed features in PostgreSQL and the
+# supervised ML model that needs labeled examples.
+# =============================================================================
+
+import pandas as pd
+import numpy as np
+
+
+def generate_scenarios(
+    financial_profiles: pd.DataFrame,
+    products: pd.DataFrame,
+    n_scenarios: int = 10_000,
+    random_state: int = 42,
+) -> pd.DataFrame:
+    """
+    Generate synthetic user-product scenarios by randomly sampling pairs.
+
+    Args:
+        financial_profiles: DataFrame from `financial_profiles` table.
+            Required columns: monthly_income, discretionary_income,
+                              savings_balance, monthly_expenses, monthly_emi,
+                              emergency_fund_months
+        products: DataFrame from `products` table.
+            Required columns: price, product_id
+        n_scenarios: Number of random (user, product) pairs to generate.
+        random_state: Seed for reproducibility.
+
+    Returns:
+        DataFrame with one row per scenario containing user features,
+        product price, computed affordability metrics, and a rule-based label.
+    """
+    rng = np.random.default_rng(random_state)
+
+    user_indices = rng.integers(0, len(financial_profiles), size=n_scenarios)
+    product_indices = rng.integers(0, len(products), size=n_scenarios)
+
+    users = financial_profiles.iloc[user_indices].reset_index(drop=True)
+    prods = products.iloc[product_indices].reset_index(drop=True)
+
+    # Compute affordability metrics for each scenario
+    scenarios = users.copy()
+    scenarios["product_id"] = prods["product_id"].values
+    scenarios["product_price"] = prods["price"].values
+
+    scenarios["affordability_score"] = (
+        scenarios["discretionary_income"] - scenarios["product_price"]
+    )
+    scenarios["price_to_income_ratio"] = (
+        scenarios["product_price"] / scenarios["monthly_income"].replace(0, np.nan)
+    )
+    scenarios["residual_utility_score"] = (
+        (scenarios["savings_balance"] - scenarios["product_price"])
+        / (scenarios["monthly_expenses"] + scenarios["monthly_emi"]).replace(0, np.nan)
+    )
+
+    # Label each scenario using deterministic rules
+    scenarios["label"] = scenarios.apply(label_scenario, axis=1)
+
+    logger.info(
+        "Generated %d scenarios — label distribution:\n%s",
+        len(scenarios),
+        scenarios["label"].value_counts().to_string(),
+    )
+    return scenarios
+
+
+def label_scenario(row: pd.Series) -> str:
+    """
+    Deterministic labeling rules for a user-product scenario.
+
+    Rules:
+        RED    — Cannot afford AND no emergency cushion
+                 (affordability_score < 0 AND emergency_fund_months < 1)
+        YELLOW — Marginal: can't quite afford OR thin emergency cushion
+                 (affordability_score < 0 OR emergency_fund_months < 3)
+        GREEN  — Comfortably affordable with adequate safety net
+
+    Args:
+        row: A single scenario row with at least `affordability_score`
+             and `emergency_fund_months`.
+
+    Returns:
+        One of "RED", "YELLOW", "GREEN".
+    """
+    if row["affordability_score"] < 0 and row.get("emergency_fund_months", 0) < 1:
+        return "RED"
+    elif row["affordability_score"] < 0 or row.get("emergency_fund_months", 0) < 3:
+        return "YELLOW"
+    else:
+        return "GREEN"

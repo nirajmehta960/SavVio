@@ -13,7 +13,7 @@ class Config:
 
     # --- Target Definition ---
     # The columns we use to dynamically calculate our target "Good Financial Condition" Y variable
-    TARGET_CALC_COLS = ["credit_score", "savings_to_income_ratio", "debt_to_income_ratio"]
+    TARGET_CALC_COLS = ["credit_score", "saving_to_income_ratio", "debt_to_income_ratio"]
     
     # --- Feature Engineering ---
     CATEGORICAL_FEATURES = ["gender", "education_level", "employment_status", "job_title", "has_loan", "loan_type", "region"]

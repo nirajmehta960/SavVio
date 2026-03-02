@@ -1,3 +1,16 @@
+# ==============================================================================
+# This file is a simplified example of a model development pipeline to better understand the core steps
+# involved in training a machine learning model, evaluating it, and tracking the process with MLflow. 
+# It includes:
+# 1. Configuration of paths, parameters, and settings.
+# 2. Loading and preparing the dataset, including defining a composite target variable.
+# 3. Basic feature engineering with ordinal encoding for categorical variables.
+# 4. A simulated LLM guardrail function to demonstrate how predictions could be checked against financial guidance policies.
+# 5. A main execution function that trains multiple models, evaluates them, logs metrics and artifacts to MLflow, 
+# and identifies the best performing model for potential registration.
+# ==============================================================================
+
+
 import os
 import joblib
 import pandas as pd
