@@ -27,7 +27,6 @@ def _install_stub_modules():
 
     db_schema = types.ModuleType("db_schema")
     db_schema.create_tables = MagicMock(name="create_tables")
-    db_schema.drop_tables   = MagicMock(name="drop_tables")
 
     vector_embed = types.ModuleType("vector_embed")
     vector_embed.load_model               = MagicMock(name="load_model")
@@ -126,14 +125,12 @@ def test_load_reviews_task_positive(mock_setup, mock_load_reviews, tmp_path):
 # =============================================================================
 
 @patch.object(orchestrator, "get_engine")
-def test_setup_database_task_drops_and_creates(mock_get_engine):
+def test_setup_database_task_creates_tables(mock_get_engine):
     mock_engine = MagicMock(name="engine")
     mock_get_engine.return_value = mock_engine
-    with patch("db_schema.drop_tables") as mock_drop, \
-         patch("db_schema.create_tables") as mock_create:
+    with patch("db_schema.create_tables") as mock_create:
         orchestrator.setup_database_task()
     mock_get_engine.assert_called_once()
-    mock_drop.assert_called_once_with(mock_engine)
     mock_create.assert_called_once_with(mock_engine)
 
 

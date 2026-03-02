@@ -115,11 +115,62 @@ def _select_and_rename(df: pd.DataFrame, col_map: dict) -> pd.DataFrame:
     return df[list(available.keys())].rename(columns=available)
 
 
-def _truncate_table(engine, table_name: str):
-    """Truncate a table (cascade to handle FKs)."""
+def _upsert_df(
+    engine,
+    df: pd.DataFrame,
+    table_name: str,
+    conflict_cols: list,
+    update_cols: list,
+    chunksize: int = 100_000,
+) -> int:
+    """
+    Upsert a DataFrame into a PostgreSQL table.
+
+    Uses INSERT ... ON CONFLICT (conflict_cols) DO UPDATE SET ...
+    to insert new rows and update existing ones. No data is deleted.
+
+    Args:
+        engine:        SQLAlchemy engine.
+        df:            DataFrame to upsert.
+        table_name:    Target table name.
+        conflict_cols: Column(s) forming the unique constraint.
+        update_cols:   Column(s) to update on conflict.
+        chunksize:     Number of rows per batch.
+
+    Returns:
+        Number of rows processed.
+    """
+    if df.empty:
+        logger.info("Empty DataFrame — nothing to upsert into %s", table_name)
+        return 0
+
+    # Build the column lists for the INSERT.
+    all_cols = list(df.columns)
+    col_list = ", ".join(all_cols)
+    val_placeholders = ", ".join(f":{c}" for c in all_cols)
+    conflict_list = ", ".join(conflict_cols)
+    update_set = ", ".join(
+        f"{c} = EXCLUDED.{c}" for c in update_cols
+    )
+    # Also update the updated_at timestamp on conflict.
+    update_set += ", updated_at = CURRENT_TIMESTAMP"
+
+    sql = text(
+        f"INSERT INTO {table_name} ({col_list}) "
+        f"VALUES ({val_placeholders}) "
+        f"ON CONFLICT ({conflict_list}) DO UPDATE SET {update_set}"
+    )
+
+    rows_processed = 0
     with engine.begin() as conn:
-        conn.execute(text(f"TRUNCATE TABLE {table_name} CASCADE"))
-    logger.info("Truncated table: %s", table_name)
+        for start in range(0, len(df), chunksize):
+            chunk = df.iloc[start : start + chunksize]
+            records = chunk.to_dict(orient="records")
+            conn.execute(sql, records)
+            rows_processed += len(records)
+
+    logger.info("Upserted %d rows into %s", rows_processed, table_name)
+    return rows_processed
 
 
 def _ensure_jsonb(df: pd.DataFrame, col: str) -> pd.DataFrame:
@@ -147,28 +198,19 @@ def _ensure_jsonb(df: pd.DataFrame, col: str) -> pd.DataFrame:
 # Per-table loaders
 # ---------------------------------------------------------------------------
 
-def load_financial(engine, csv_path: str, truncate: bool = True) -> int:
-    """Load financial profiles from CSV into financial_profiles table."""
+def load_financial(engine, csv_path: str) -> int:
+    """Upsert financial profiles from CSV into financial_profiles table."""
     df = _read_csv(csv_path)
     df = _select_and_rename(df, FINANCIAL_COLS)
 
-    if truncate:
-        _truncate_table(engine, "financial_profiles")
+    conflict_cols = ["user_id"]
+    update_cols = [c for c in df.columns if c not in conflict_cols]
 
-    df.to_sql(
-        "financial_profiles",
-        engine,
-        if_exists="append",
-        index=False,
-        method="multi",
-        chunksize=500,
-    )
-    logger.info("Loaded %d financial profiles", len(df))
-    return len(df)
+    return _upsert_df(engine, df, "financial_profiles", conflict_cols, update_cols)
 
 
-def load_products(engine, jsonl_path: str, truncate: bool = True) -> int:
-    """Load products from JSONL into products table."""
+def load_products(engine, jsonl_path: str) -> int:
+    """Upsert products from JSONL into products table."""
     df = _read_jsonl(jsonl_path)
     df = _select_and_rename(df, PRODUCT_COLS)
 
@@ -180,23 +222,14 @@ def load_products(engine, jsonl_path: str, truncate: bool = True) -> int:
     # Serialize details as JSON string for JSONB column
     df = _ensure_jsonb(df, "details")
 
-    if truncate:
-        _truncate_table(engine, "products")
+    conflict_cols = ["product_id"]
+    update_cols = [c for c in df.columns if c not in conflict_cols]
 
-    df.to_sql(
-        "products",
-        engine,
-        if_exists="append",
-        index=False,
-        method="multi",
-        chunksize=500,
-    )
-    logger.info("Loaded %d products", len(df))
-    return len(df)
+    return _upsert_df(engine, df, "products", conflict_cols, update_cols)
 
 
-def load_reviews(engine, jsonl_path: str, truncate: bool = True) -> int:
-    """Load reviews from JSONL into reviews table."""
+def load_reviews(engine, jsonl_path: str) -> int:
+    """Upsert reviews from JSONL into reviews table."""
     df = _read_jsonl(jsonl_path)
     df = _select_and_rename(df, REVIEW_COLS)
 
@@ -222,19 +255,10 @@ def load_reviews(engine, jsonl_path: str, truncate: bool = True) -> int:
             dropped,
         )
 
-    if truncate:
-        _truncate_table(engine, "reviews")
+    conflict_cols = ["user_id", "product_id"]
+    update_cols = [c for c in df.columns if c not in conflict_cols]
 
-    df.to_sql(
-        "reviews",
-        engine,
-        if_exists="append",
-        index=False,
-        method="multi",
-        chunksize=500,
-    )
-    logger.info("Loaded %d reviews", len(df))
-    return len(df)
+    return _upsert_df(engine, df, "reviews", conflict_cols, update_cols)
 
 
 # ---------------------------------------------------------------------------
@@ -246,18 +270,18 @@ def load_all(
     products_path: str,
     reviews_path: str,
     env: str = "dev",
-    truncate: bool = True,
 ):
     """
     Load all three datasets into PostgreSQL in FK-safe order.
+    Uses upsert (INSERT ... ON CONFLICT DO UPDATE) — no data is deleted.
     Products first, then reviews (reviews reference products).
     """
     engine = get_engine(env)
     create_tables(engine)
 
-    n_fin  = load_financial(engine, financial_path, truncate)
-    n_prod = load_products(engine, products_path, truncate)
-    n_rev  = load_reviews(engine, reviews_path, truncate)
+    n_fin  = load_financial(engine, financial_path)
+    n_prod = load_products(engine, products_path)
+    n_rev  = load_reviews(engine, reviews_path)
 
     summary = {
         "financial_profiles": n_fin,
@@ -278,12 +302,11 @@ if __name__ == "__main__":
     from src.utils import setup_logging
     setup_logging()
 
-    parser = argparse.ArgumentParser(description="Upload featured data to PostgreSQL")
+    parser = argparse.ArgumentParser(description="Upload featured data to PostgreSQL (upsert)")
     parser.add_argument("--financial", required=True, help="Path to financial CSV (e.g., data/featured/financial_featured.csv)")
     parser.add_argument("--products", required=True, help="Path to products JSONL (e.g., data/featured/products_featured.jsonl)")
     parser.add_argument("--reviews", required=True, help="Path to reviews JSONL (e.g., data/featured/reviews_featured.jsonl)")
     parser.add_argument("--env", default="dev", choices=["dev", "prod"])
-    parser.add_argument("--no-truncate", action="store_true", help="Append instead of replace")
     args = parser.parse_args()
 
     result = load_all(
@@ -291,6 +314,5 @@ if __name__ == "__main__":
         args.products,
         args.reviews,
         env=args.env,
-        truncate=not args.no_truncate,
     )
     print("Upload summary:", result)

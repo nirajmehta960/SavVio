@@ -83,7 +83,7 @@
 | Schema/Stats         | Great Expectations            | Pandera, ydata-profiling, custom Python | PythonOperator                 |
 | Raw Validation       | Great Expectations            | Pandera, Pydantic, custom validators    | PythonOperator                 |
 | Anomaly Detection    | Great Expectations, Evidently | Custom Python (IQR/z-score)             | PythonOperator + EmailOperator |
-| Preprocessing        | Pandas                        | Polars                                  | PythonOperator                 |
+| Preprocessing        | Pandas, DuckDB                | Polars                                  | PythonOperator                 |
 | Processed Validation | Great Expectations            | Pandera, custom validators              | PythonOperator                 |
 | Features             | Pandas, NumPy                 | Polars                                  | PythonOperator                 |
 | Feature Validation   | Great Expectations            | Pandera, custom validators              | PythonOperator                 |
@@ -574,7 +574,13 @@ Clean, transform, and standardize validated data into a consistent format ready 
    - Normalize text for processing
    - Aggregate ratings by product
 
-3. **Save processed data**
+3. **Incremental Merging (Out-of-Core)**
+   - To support continuous daily ingestion without blowing up Memory, new batched records are merged with the existing historical dataset using **DuckDB**.
+   - Records with matching keys (`asin`, `user_id`) in both files are updated/replaced.
+   - New records are appended. 
+   - Operations performed entirely out-of-core utilizing `/tmp` disk spilling to stay within strict Docker RAM limits.
+
+4. **Save processed data**
    - `data/processed/financial_processed.csv`
    - `data/processed/products_processed.csv`
    - `data/processed/reviews_processed.csv`

@@ -99,7 +99,8 @@ def test_preprocess_product_full_flow(mock_remove, mock_ensure):
         # For write/append operations (w/a), return a generic mock
         return MagicMock()
 
-    with patch("builtins.open", side_effect=open_side_effect):
+    with patch("builtins.open", side_effect=open_side_effect), \
+         patch("os.replace"):
         # Run the function under test
         df_result = preprocess_product_data("mock_in.jsonl", "mock_out.jsonl")
         

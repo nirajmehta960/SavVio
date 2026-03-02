@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from dataclasses import dataclass
 from typing import Dict, List, Set, Tuple
 
@@ -95,7 +96,7 @@ def _to_bool(value: object) -> bool:
 
 def _process_batch(
     records: List[Dict[str, object]],
-    seen_review_keys: Set[Tuple[str, str, str]],
+    seen_review_keys: Set[Tuple[str, str]],
     stats: PreprocessStats,
 ) -> pd.DataFrame:
     """Apply deterministic transformations to one DataFrame batch."""
@@ -141,8 +142,8 @@ def _process_batch(
     df["helpful_vote"] = pd.to_numeric(df["helpful_vote"], errors="coerce").fillna(0).astype(int)
     df["verified_purchase"] = df["verified_purchase"].apply(_to_bool).astype(bool)
 
-    # Global duplicate key: (asin + user_id + text)
-    keys = list(zip(df["asin"], df["user_id"], df["text"]))
+    # Global duplicate key: (asin + user_id)
+    keys = list(zip(df["asin"], df["user_id"]))
     keep_mask = []
     for key in keys:
         if key in seen_review_keys:
@@ -182,16 +183,17 @@ def preprocess_review_data(input_path: str, output_path: str) -> pd.DataFrame:
     ensure_output_dir(output_path)
 
     stats = PreprocessStats()
-    seen_review_keys: Set[Tuple[str, str, str]] = set()
+    seen_review_keys: Set[Tuple[str, str]] = set()
     discovered_columns: Set[str] = set()
     batch_records: List[Dict[str, object]] = []
     sample_frames: List[pd.DataFrame] = []
 
-    # Start with a clean output file.
-    open(output_path, "w", encoding="utf-8").close()
+    # Write to temp file to preserve existing output for incremental merge.
+    new_output_path = output_path + ".new.tmp"
+    open(new_output_path, "w", encoding="utf-8").close()
 
     LOGGER.info("Loading JSONL stream from: %s", input_path)
-    with open(input_path, "r", encoding="utf-8") as infile, open(output_path, "a", encoding="utf-8") as outfile:
+    with open(input_path, "r", encoding="utf-8") as infile, open(new_output_path, "a", encoding="utf-8") as outfile:
         for raw_line in infile:
             stats.raw_rows_loaded += 1
             line = raw_line.strip()
@@ -248,12 +250,24 @@ def preprocess_review_data(input_path: str, output_path: str) -> pd.DataFrame:
 
     _print_snapshot(final_sample, title=f"Final Review Sample (rows saved: {stats.final_rows})", rows=5)
 
+    # --- Incremental merge: merge new output with existing preprocessed file ---
+    if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
+        from src.incremental import merge_jsonl
+        merge_stats = merge_jsonl(
+            new_output_path, output_path, key_cols=["user_id", "product_id"]
+        )
+        os.remove(new_output_path)
+        LOGGER.info("Incremental merge stats: %s", merge_stats)
+    else:
+        # First run — just move temp to output.
+        os.replace(new_output_path, output_path)
+
     LOGGER.info(
         "Dropped fields timestamp/images: not useful for text embeddings or sentiment analytics and add noise."
     )
     LOGGER.info("Raw rows loaded: %d", stats.raw_rows_loaded)
     LOGGER.info("Malformed JSON rows skipped: %d", stats.malformed_json_rows_skipped)
-    LOGGER.info("Duplicates removed ((asin + user_id + text)): %d", stats.duplicates_removed)
+    LOGGER.info("Duplicates removed ((asin + user_id)): %d", stats.duplicates_removed)
     LOGGER.info(
         "Rows dropped (missing IDs or ratings): %d",
         stats.removed_missing_parent_asin + stats.removed_missing_user_id + stats.removed_missing_rating,

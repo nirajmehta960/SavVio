@@ -4,21 +4,22 @@ Phase 2 (Data Pipeline — current):
     Reviews → preprocessed → PostgreSQL
     ✅ No artificial merge, no features.csv
 
-Phase 3 (Model Pipeline — 2 weeks):
+Phase 3 (Model Pipeline — 3 weeks):
     Read from PostgreSQL
     → Generate synthetic training scenarios
     → Deterministic engine computes affordability
     → Label scenarios (Green/Yellow/Red)
     → Train XGBoost classifier (Green/Yellow/Red + confidence score to LLM)
     → MLflow tracking, validation, bias detection
-    → Model registry
-    ✅ Course requirements satisfied
-
-Phase 4 (Deployment — 4 weeks):
+    → Model registry - GCP artifact registry
     → FastAPI Decision API
+    -----------
     → Integrate deterministic engine + XGBoost + LLM
     → LLM wraps XGBoost's decision in conversation
-    → NeMo Guardrails
-    → Basic prompt engineering (Option B from earlier)
+    → NeMo Guardrails - Security, compliance and prevent hallucinations. 
+    → Basic prompt engineering (Option B from Claude)
+    ------------
     → Monitoring, CI/CD
-    ✅ LLM integration happens here
+    LLM integration happens here
+    
+Phase 4 Deployment - 3 weeks
