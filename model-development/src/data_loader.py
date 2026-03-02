@@ -21,7 +21,7 @@ def define_target(df: pd.DataFrame) -> pd.Series:
     """
     target = (
         (df["credit_score"] >= 700) &
-        (df["savings_to_income_ratio"] > 3.5) &
+        (df["saving_to_income_ratio"] > 3.5) &
         (df["debt_to_income_ratio"] < 3.0)
     ).astype(int)
     

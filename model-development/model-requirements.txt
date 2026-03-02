@@ -1,4 +1,9 @@
 # -----------------------------------------------------------------------------
+# MLflow
+# -----------------------------------------------------------------------------
+mlflow
+
+# -----------------------------------------------------------------------------
 # Core Data Processing
 # -----------------------------------------------------------------------------
 pandas>=2.1.4
@@ -7,7 +12,7 @@ numpy>=1.26.2
 scikit-learn 
 
 # Vector Embeddings
-sentence-transformers
+# sentence-transformers  # Not needed in model pipeline; used by data-pipeline for pgvector embeddings
 
 # For PostgreSQL
 psycopg2-binary

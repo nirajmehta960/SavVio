@@ -52,7 +52,7 @@ def main():
         params = model_config["params"]
 
         print(f"\n======================================")
-        print(f"🎬 Starting MLflow Run: {model_type}")
+        print(f"Starting MLflow Run: {model_type}")
         print(f"======================================")
 
         with mlflow.start_run(run_name=f"{model_type}_training"):
@@ -96,7 +96,7 @@ def main():
     # Automatically register the best performing run as the active model version
     if best_run_id:
         model_uri = f"runs:/{best_run_id}/model"
-        print(f"📦 Registering {model_uri} to MLflow Registry as 'Financial_Wellbeing_Predictor'")
+        print(f"Registering {model_uri} to MLflow Registry as 'Financial_Wellbeing_Predictor'")
         # Note: In a live environment, you would uncomment the following block:
         # import mlflow.tracking
         # client = mlflow.tracking.MlflowClient()

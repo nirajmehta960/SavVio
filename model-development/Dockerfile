@@ -1,31 +1,33 @@
-FROM nvidia/cuda:12.1.1-devel-ubuntu22.04
+# =============================================================================
+# SavVio ML Pipeline — Compute Environment
+# =============================================================================
+# This Dockerfile builds the container where model training code executes.
+# By default it uses a lightweight Python image (CPU-only).
+# To enable GPU/CUDA support for large datasets, swap the FROM line below.
+# =============================================================================
 
-# Set non-interactive to avoid hanging on prompts during build
-ENV DEBIAN_FRONTEND=noninteractive
+# --------------------------------------------------------------
+# Option 1: CPU-only (Default — lightweight, fast builds)
+# --------------------------------------------------------------
+FROM python:3.10-slim
 
-# Update system and install Python + build dependencies
-RUN apt-get update && apt-get install -y \
-    python3 \
-    python3-pip \
-    python3-dev \
-    build-essential \
-    cmake \
-    gcc \
-    g++ \
-    git \
-    wget \
-    && rm -rf /var/lib/apt/lists/*
+# --------------------------------------------------------------
+# Option 2: GPU/CUDA (Uncomment below AND comment out Option 1)
+# Requires: NVIDIA Container Toolkit on host machine
+# --------------------------------------------------------------
+# FROM nvidia/cuda:12.1.1-devel-ubuntu22.04
+# ENV DEBIAN_FRONTEND=noninteractive
+# RUN apt-get update && apt-get install -y \
+#     python3 python3-pip python3-dev \
+#     build-essential cmake gcc g++ \
+#     && rm -rf /var/lib/apt/lists/*
+# --------------------------------------------------------------
 
-# Set working directory inside container
 WORKDIR /app
 
-# Copy the requirements file into the container
-# Note: we assume building this from the root of the project to allow mounting both data/ and model-development/
-COPY ./model-development/model-requirements.txt /app/model-requirements.txt
+# Copy and install requirements
+COPY model-requirements.txt .
+RUN pip install --upgrade pip && \
+    pip install -r model-requirements.txt
 
-# Upgrade pip and install the ML requirements
-RUN python3 -m pip install --upgrade pip
-RUN pip3 install -r model-requirements.txt
-
-# By default, start a jupyter server for interactive dev if we need (or keep it simple and just stay alive)
 CMD ["tail", "-f", "/dev/null"]

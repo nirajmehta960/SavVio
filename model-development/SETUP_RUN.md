@@ -1,24 +1,45 @@
 ## Runbook
 
+### Option 1: Docker (recommended)
 ```bash
-# 1. Activate environment
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-
-# OR use Docker:
+# Start all services (MLflow, PostgreSQL, RustFS, ml-trainer)
 docker compose up --build
 
-# 2. Run feature engineering
-python model-development/affordability_features.py
+# Enter the training container
+docker exec -it ml-trainer bash
 
-# 3. Train model
-python model-development/src/train.py \
-  --config model-development/config/training_config.yaml
+# Run the modular pipeline (trains XGBoost, LightGBM, LinearBoost)
+cd /app/src
+python run_pipeline.py
 
-# 5. Run post-training bias detection
-python model-development/bias_detection.py
+# Or run the standalone linear pipeline
+python pipeline_linear.py
+```
 
-# 6. Push approved model to registry
-python model-development/src/registry.py --model <best-run-id>
+### Option 2: Local virtualenv
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r model-requirements.txt
+
+# Run the pipeline
+cd src
+python run_pipeline.py
+```
+
+### Individual Components
+```bash
+# Test DB connectivity (once DB integration is live)
+python src/data/db_loader.py
+
+# Run data validation after loading
+python src/data/validate_data.py
+
+# View MLflow UI
+open http://localhost:5000
+```
+
+### Running Tests
+```bash
+pytest tests/ -v
 ```
