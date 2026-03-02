@@ -123,4 +123,4 @@ data-pipeline/config/
 .env
 
 # temp_data
-temp_data/*
+*/temp_data/*
