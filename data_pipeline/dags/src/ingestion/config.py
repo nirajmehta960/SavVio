@@ -51,8 +51,8 @@ REVIEW_BLOB = os.getenv("REVIEW_BLOB", "raw/review_data.jsonl")
 # ============================================================================
 
 
-# Define Project Root (data-pipeline directory)
-# config.py is in data-pipeline/ingestion-scripts/
+# Define Project Root (data_pipeline directory)
+# config.py is in data_pipeline/ingestion-scripts/
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 REPO_ROOT = PROJECT_ROOT.parent
 
@@ -66,7 +66,7 @@ if _data_dir_env:
         # Assume relative paths in .env are relative to repository root
         DATA_DIR = REPO_ROOT / _path
 else:
-    # Default to data-pipeline/data
+    # Default to data_pipeline/data
     DATA_DIR = PROJECT_ROOT / "data"
 
 # Subdirectories
@@ -146,7 +146,7 @@ if _log_dir_env:
         # Assume relative paths in .env are relative to repository root
         LOG_DIR = REPO_ROOT / _path
 else:
-    # Default to data-pipeline/logs
+    # Default to data_pipeline/logs
     LOG_DIR = PROJECT_ROOT / "logs"
 
 LOG_DIR.mkdir(parents=True, exist_ok=True)

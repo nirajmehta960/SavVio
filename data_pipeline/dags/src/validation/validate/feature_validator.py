@@ -37,7 +37,7 @@ def _find_pipeline_root(start: Path) -> Path:
     return current_file_path.parents[2]  # fallback: .../dags/
 
 
-# Ensure running from data-pipeline root so relative data paths work
+# Ensure running from data_pipeline root so relative data paths work
 pipeline_root = _find_pipeline_root(current_file_path.parent)
 if os.getcwd() != str(pipeline_root):
     os.chdir(pipeline_root)

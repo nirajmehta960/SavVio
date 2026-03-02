@@ -8,7 +8,7 @@
 
 ```
 SavVio/
-└── model-development/                   # ← THIS PHASE
+└── model_pipeline/                   # ← THIS PHASE
     ├── Dockerfile                  # GPU-enabled base image
     ├── docker-compose.yml          # Unified MLflow + ML-Dev orchestration
     ├── model-requirements.txt
@@ -115,7 +115,7 @@ SavVio/
 - Configure DVC remote to point to GCS bucket
 - Pull versioned feature artifacts:
   ```bash
-  cd data-pipeline/dags/data
+  cd data_pipeline/dags/data
   dvc pull
   ```
 - Validate file existence for all three feature files
@@ -451,7 +451,7 @@ Downgrade policy: Green → Yellow → Red (Red stays Red)
 
 **Tasks:**
 - Set up MLflow tracking server (local or GCP-hosted)
-- Create MLflow experiment named `savvio-model-development`
+- Create MLflow experiment named `savvio-model_pipeline`
 - Instrument `train.py` to auto-log: params, metrics, model artifact, data version reference
 - Log bias reports and slice charts as MLflow artifacts per run
 - Log confusion matrix, ROC curve, and bar plots per run
@@ -508,7 +508,7 @@ Downgrade policy: Green → Yellow → Red (Red stays Red)
 ### Pipeline Architecture
 
 ```
-GitHub Push / PR on model-development/
+GitHub Push / PR on model_pipeline/
         ↓
 GitHub Actions / Cloud Build  [Dockerized]
         ├── 1. src unit tests
@@ -607,7 +607,7 @@ GitHub Actions / Cloud Build  [Dockerized]
 ### Phase 16 — Testing
 
 ```bash
-pytest model-development/tests
+pytest model_pipeline/tests
 ```
 
 **Test coverage:**

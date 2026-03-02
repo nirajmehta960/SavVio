@@ -35,14 +35,14 @@ cd SavVio
 Create the required directories and set up permissions:
 
 ```bash
-mkdir -p data-pipeline/logs data-pipeline/plugins
+mkdir -p data_pipeline/logs data_pipeline/plugins
 ```
 
 > **Note:** Do not use `echo` commands to append variables to your `.env` file. Instead, use the provided `.env.example` template to manually map your configurations.
 
 1. **Copy the environment template:**
    ```bash
-   cd data-pipeline
+   cd data_pipeline
    cp ../.env.example .env
    ```
 
@@ -56,7 +56,7 @@ mkdir -p data-pipeline/logs data-pipeline/plugins
    GCS_BUCKET_NAME=savvio-data-bucket
    
    # Absolute path to your GCP service account JSON key (used for local development)
-   # Ex: /absolute/path/to/SavVio/data-pipeline/config/savvio-gcp-key.json
+   # Ex: /absolute/path/to/SavVio/data_pipeline/config/savvio-gcp-key.json
    GCP_CREDENTIALS_PATH=/path/to/your/service-account-key.json
    ```
 
@@ -117,14 +117,14 @@ The **entire data pipeline** will run via Docker Compose, with the single except
 1. **Initialize the database** (this will take a couple of minutes):
  
 ```bash
-cd data-pipeline
+cd data_pipeline
 docker compose up airflow-init
 ```
 
 2. **Run the Pipeline Cluster**
 
 ```bash
-cd data-pipeline
+cd data_pipeline
 docker compose up -d
 ```
 
@@ -146,21 +146,21 @@ Wait until the terminal outputs that the services are "healthy" or "running" (e.
 ### Stop Airflow (keep data)
 
 ```bash
-cd data-pipeline
+cd data_pipeline
 docker compose down
 ```
 
 ### Stop Airflow (delete all data)
 
 ```bash
-cd data-pipeline
+cd data_pipeline
 docker compose down -v
 ```
 
 ### Restart Airflow
 
 ```bash
-cd data-pipeline
+cd data_pipeline
 docker compose up -d
 ```
 
@@ -176,15 +176,15 @@ To run the full `pytest` test suite, create a virtual environment locally:
 ```bash
 python3 -m venv savvio_tests
 source savvio_tests/bin/activate
-pip install -r data-pipeline/tests/test_requirements.txt
+pip install -r data_pipeline/tests/test_requirements.txt
 ```
 
 2. To run all the tests:
 ```bash
-pytest data-pipeline/tests/ -v
+pytest data_pipeline/tests/ -v
 ```
 
 3. To run specific tests:
 ```bash
-pytest data-pipeline/tests/bias/test_run_bias.py -v
+pytest data_pipeline/tests/bias/test_run_bias.py -v
 ```

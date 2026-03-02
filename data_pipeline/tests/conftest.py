@@ -1,4 +1,4 @@
-"""Shared test configuration for the data-pipeline test suite.
+"""Shared test configuration for the data_pipeline test suite.
 
 Centralizes sys.path setup and common module stubs so that individual
 test files do not need to duplicate this boilerplate.  pytest loads
