@@ -5,7 +5,7 @@ def apply_llm_guardrails(y_pred, user_data: dict, model_confidence: float):
     Placeholder module for LLM integration.
     This simulates an LLM reviewing a model prediction before presenting it to the user.
     """
-    print("\n🤖 Evaluating Output via LLM Guardrails...")
+    print("\nEvaluating Output via LLM Guardrails...")
     
     # Example Prompt Template
     prompt_template = """
@@ -21,7 +21,7 @@ def apply_llm_guardrails(y_pred, user_data: dict, model_confidence: float):
     # This ensures that if the LLM behavior changes in the future, we know *which* prompt was tied to this model version.
     mlflow.log_param("llm_prompt_template", "v1.0_financial_guard")
     
-    print("  ✅ Passing Prompt to LLM Server...")
+    print("Passing Prompt to LLM Server...")
     # TODO: In future, integrate LangChain/OpenAI here.
     
     # Mocking LLM response
