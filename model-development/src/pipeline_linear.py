@@ -109,7 +109,7 @@ def main():
         params = config["params"]
         
         print(f"\n======================================")
-        print(f"🎬 Starting MLflow Run: {model_name}")
+        print(f"Starting MLflow Run: {model_name}")
         print(f"======================================")
         
         with mlflow.start_run(run_name=f"{model_name}_run"):
@@ -167,9 +167,9 @@ def main():
                 best_run_id = mlflow.active_run().info.run_id
 
     # 6. Model Registry Handoff
-    print("\n🎉 Pipeline Complete!")
+    print("\nPipeline Complete!")
     if best_run_id:
-        print(f"🏆 Best Model Run ID: {best_run_id} (F1: {best_f1:.4f})")
+        print(f"Best Model Run ID: {best_run_id} (F1: {best_f1:.4f})")
         print(f"This model is ready to be Registered in MLflow for Deployment.")
 
 if __name__ == "__main__":
