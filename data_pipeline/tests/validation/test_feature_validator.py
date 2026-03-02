@@ -58,12 +58,12 @@ class ValidationReport:
     def print_summary(self): pass
     def save(self): pass
 
-_vc = types.ModuleType("validation_config")
+_vc = types.ModuleType("savviocore.validation.validation_config")
 _vc.Severity         = Severity
 _vc.CheckResult      = CheckResult
 _vc.ValidationReport = ValidationReport
 _vc.load_thresholds  = lambda path=None: {}
-sys.modules["validation_config"] = _vc
+sys.modules["savviocore.validation.validation_config"] = _vc
 
 # ---------------------------------------------------------------------------
 # Stub great_expectations
@@ -113,20 +113,15 @@ sys.modules["great_expectations.dataset.pandas_dataset"] = _gx_ds_pd
 # ---------------------------------------------------------------------------
 # Load module under test
 # ---------------------------------------------------------------------------
+import importlib.util
+import savviocore
+
 def _load():
-    candidates = [
-        os.path.join(PROJECT_ROOT, "dags", "src", "validation", "validate", "feature_validator.py"),
-        os.path.join(PROJECT_ROOT, "dags", "src", "validation", "feature_validator.py"),
-    ]
-    for fpath in candidates:
-        if not os.path.isfile(fpath):
-            continue
-        spec = importlib.util.spec_from_file_location("feature_validator", fpath)
-        mod = importlib.util.module_from_spec(spec)
-        sys.modules["feature_validator"] = mod
-        spec.loader.exec_module(mod)
-        return mod
-    raise ImportError("Could not find feature_validator.py. Searched:\n" + "\n".join(candidates))
+    fpath = os.path.join(savviocore.__path__[0], "validation", "feature_validator.py")
+    spec = importlib.util.spec_from_file_location("real_feature_validator", fpath)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
 
 M = _load()
 

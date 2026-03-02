@@ -32,7 +32,7 @@ if os.getcwd() != str(pipeline_root):
     os.chdir(pipeline_root)
 
 from anomaly.detectors import AnomalyDetector
-from validation_config import CheckResult, Severity, ValidationReport
+from savviocore.validation.validation_config import CheckResult, Severity, ValidationReport
 
 logger = logging.getLogger(__name__)
 

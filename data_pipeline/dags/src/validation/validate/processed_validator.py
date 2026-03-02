@@ -35,7 +35,7 @@ if os.getcwd() != str(pipeline_root):
     os.chdir(pipeline_root)
 
 from typing import Optional, List
-from validation_config import (
+from savviocore.validation.validation_config import (
     CheckResult, Severity, ValidationReport, load_thresholds,
 )
 

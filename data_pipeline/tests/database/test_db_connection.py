@@ -14,7 +14,7 @@ from sqlalchemy import create_engine, inspect, text
 
 # sys.path set up by conftest.py
 
-from dags.src.database.db_schema import (  # noqa: E402
+from savviocore.database.db_schema import (  # noqa: E402
     Base,
     FinancialProfile,
     Product,
@@ -22,11 +22,10 @@ from dags.src.database.db_schema import (  # noqa: E402
     create_tables,
 )
 
-from dags.src.database.db_connection import (  # noqa: E402
+from savviocore.database.db_connection import (
     get_engine,
     get_session,
     ensure_pgvector,
-    ENV_MAP,
     _dev_url,
     _prod_url,
 )
@@ -102,7 +101,7 @@ def test_get_engine_invalid_env_raises():
         get_engine("staging")
 
 
-@patch("dags.src.database.db_connection.create_engine")
+@patch("savviocore.database.db_connection.create_engine")
 def test_get_engine_dev_calls_create_engine(mock_create):
     mock_create.return_value = MagicMock()
     engine = get_engine("dev", echo=True)
@@ -112,7 +111,7 @@ def test_get_engine_dev_calls_create_engine(mock_create):
     assert call_kwargs[1]["pool_pre_ping"] is True
 
 
-@patch("dags.src.database.db_connection.sessionmaker")
+@patch("savviocore.database.db_connection.sessionmaker")
 def test_get_session_returns_session(mock_sm):
     mock_session_class = MagicMock()
     mock_sm.return_value = mock_session_class

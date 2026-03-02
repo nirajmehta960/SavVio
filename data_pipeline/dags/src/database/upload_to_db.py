@@ -15,8 +15,8 @@ import logging
 import pandas as pd
 from sqlalchemy import text
 
-from src.database.db_connection import get_engine
-from src.database.db_schema import create_tables
+from savviocore.database.db_connection import get_engine
+from savviocore.database.db_schema import create_tables
 
 logger = logging.getLogger(__name__)
 

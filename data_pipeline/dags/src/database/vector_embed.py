@@ -19,8 +19,8 @@ import pandas as pd
 import numpy as np
 from sqlalchemy import text
 
-from db_connection import get_engine, ensure_pgvector
-from db_schema import create_tables
+from savviocore.database.db_connection import get_engine, ensure_pgvector
+from savviocore.database.db_schema import create_tables
 # free. No API keys, no billing, no rate limits
 from sentence_transformers import SentenceTransformer
 

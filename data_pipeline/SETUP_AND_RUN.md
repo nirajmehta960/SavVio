@@ -172,10 +172,11 @@ Automated tests are the only component of this project **not** orchestrated via 
 
 To run the full `pytest` test suite, create a virtual environment locally:
 
-1. Create a virtual environment and verify dependencies:
+1. Create a virtual environment and verify dependencies (including the `savviocore` local package):
 ```bash
 python3 -m venv savvio_tests
 source savvio_tests/bin/activate
+pip install -e savviocore
 pip install -r data_pipeline/tests/test_requirements.txt
 ```
 

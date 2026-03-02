@@ -75,23 +75,23 @@ class ValidationReport:
             "timestamp": "2026-01-01T00:00:00",
         }
 
-_vc = types.ModuleType("validation_config")
+_vc = types.ModuleType("savviocore.validation.validation_config")
 _vc.Severity         = Severity
 _vc.CheckResult      = CheckResult
 _vc.ValidationReport = ValidationReport
 _vc.load_thresholds  = lambda path=None: {}
-sys.modules["validation_config"] = _vc
+sys.modules["savviocore.validation.validation_config"] = _vc
 
 # Stub sub-validator modules
 for _mod in ("validate.raw_validator", "validate.processed_validator",
-             "validate.feature_validator", "anomaly.anomaly_validator",
-             "validate", "anomaly"):
+             "savviocore.validation.feature_validator", "anomaly.anomaly_validator",
+             "validate", "anomaly", "savviocore", "savviocore.validation"):
     if _mod not in sys.modules:
         sys.modules[_mod] = types.ModuleType(_mod)
 
 sys.modules["validate.raw_validator"].run_raw_validation          = MagicMock()
 sys.modules["validate.processed_validator"].run_processed_validation = MagicMock()
-sys.modules["validate.feature_validator"].run_feature_validation  = MagicMock()
+sys.modules["savviocore.validation.feature_validator"].run_feature_validation  = MagicMock()
 sys.modules["anomaly.anomaly_validator"].run_anomaly_validation      = MagicMock()
 sys.modules["anomaly.anomaly_validator"].run_raw_anomaly_validation  = MagicMock()
 
@@ -185,12 +185,12 @@ def test_validate_processed_halts_on_critical():
         M.validate_processed()
 
 def test_validate_features_returns_summary():
-    sys.modules["validate.feature_validator"].run_feature_validation.return_value = _report("features", "CONTINUE")
+    sys.modules["savviocore.validation.feature_validator"].run_feature_validation.return_value = _report("features", "CONTINUE")
     result = M.validate_features()
     assert "pipeline_action" in result
 
 def test_validate_features_halts_on_critical():
-    sys.modules["validate.feature_validator"].run_feature_validation.return_value = _report("features", "HALT")
+    sys.modules["savviocore.validation.feature_validator"].run_feature_validation.return_value = _report("features", "HALT")
     with pytest.raises(RuntimeError):
         M.validate_features()
 
