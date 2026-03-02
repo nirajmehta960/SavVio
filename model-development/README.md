@@ -1,38 +1,31 @@
 # SavVio — Model Development Pipeline
 
-## AI-Driven Financial Advocacy Tool
-
-**Course:** MLOps  
-**Phase:** Model Development (Phase 3)  
 **Team:** Murtaza Nipplewala, Niraj Mehta, Wen-Hsin Su, Pranathi Bombay, Rishabh Joshi, Sanjana Patnam
 
 ---
 
-## Table of Contents
+## ML Pipeline Structure
 
-1. [Project Overview](#1-project-overview)
-2. [Architecture](#2-architecture)
-3. [Repository Structure](#3-repository-structure)
-4. [Data Source](#4-data-source)
-5. [Phase 1 — Data Loading](#5-phase-1--data-loading)
-6. [Phase 2 — Feature Engineering](#6-phase-2--feature-engineering)
-7. [Phase 3 — Deterministic Decision Engine](#7-phase-3--deterministic-decision-engine)
-8. [Phase 4 — Model Training](#8-phase-4--model-training)
-9. [Phase 5 — Hyperparameter Tuning](#9-phase-5--hyperparameter-tuning)
-10. [Phase 6 — Validation & Metrics](#10-phase-6--validation--metrics)
-11. [Phase 7 — Bias Detection](#11-phase-7--bias-detection)
-12. [Phase 8 — Bias Mitigation](#12-phase-8--bias-mitigation)
-13. [Phase 9 — Model Selection](#13-phase-9--model-selection)
-14. [Phase 10 — Sensitivity & Explainability](#14-phase-10--sensitivity--explainability)
-15. [Phase 11 — Experiment Tracking](#15-phase-11--experiment-tracking)
-16. [Phase 12 — Model Registry Push](#16-phase-12--model-registry-push)
-17. [Phase 13 — CI/CD Automation](#17-phase-13--cicd-automation)
-18. [Phase 14 — LLM Wrapping & Guardrails](#18-phase-14--llm-wrapping--guardrails)
-19. [Phase 15 — Monitoring & Dashboard](#19-phase-15--monitoring--dashboard)
-20. [Runbook](#runbook)
-21. [Testing](#testing)
-22. [Operational Risks & Guardrails](#operational-risks--guardrails)
-23. [Deliverable Checklist](#deliverable-checklist)
+```
+SavVio/
+└── model-development/                   # ← THIS PHASE
+    ├── Dockerfile                  # GPU-enabled base image
+    ├── docker-compose.yml          # Unified MLflow + ML-Dev orchestration
+    ├── model-requirements.txt
+    ├── src/
+    │   ├── run_pipeline.py         # Entrypoint to run the whole ML pipeline end-to-end
+    │   ├── config.py               # Defines MLflow URIs, Hyperparameters, File paths
+    │   ├── data_loader.py          # Reads from temp_data or Airflow DB
+    │   ├── features/
+    │   │   └── engineering.py      # OrdinalEncoding, Scaling, Target definitions
+    │   ├── core_models/
+    │   │   ├── train.py            # Logic to train XGBoost, LightGBM, LinearBoost
+    │   │   └── evaluate.py         # Accuracy, F1, ROC-AUC calculations
+    │   ├── guards/
+    │   │   └── bias_detection.py   # Fairlearn integration (Demographic Parity)
+    │   └── llm/
+    │       └── prompt_engin.py     # Wrappers for prompting/language explanations
+```
 
 ---
 
@@ -58,53 +51,8 @@
 
 ---
 
----
 
-## 1. Project Overview
-
-SavVio is an AI-driven financial advocacy tool that provides pre-purchase recommendations to users in the form of a **Green / Yellow / Red** signal, based on their financial health and product quality signals.
-
-**Core design principle:**
-> LLM handles natural language context. Deterministic logic handles all financial math. ML handles confidence scoring and ranking.
-
-The recommendation pipeline has three layers:
-
-| Layer | Responsibility |
-|-------|---------------|
-| Deterministic Engine | Authoritative Green/Yellow/Red classification via rule engine |
-| ML Model | Confidence scoring and ranking support |
-| LLM + Guardrails | Natural language recommendation delivery with safety enforcement |
-
----
-
-## 2. Architecture
-
-```
-User Input
-    ↓
-┌─────────────────────────────────┐
-│     Deterministic Engine        │  ← Hard financial rules
-│     Green / Yellow / Red        │  ← Authoritative output
-└─────────────────────────────────┘
-    ↓
-┌─────────────────────────────────┐
-│        ML Model Layer           │  ← Confidence + ranking support
-│   XGBoost / LinearBoost         │  ← Cannot override engine output
-└─────────────────────────────────┘
-    ↓
-┌─────────────────────────────────┐
-│      LLM Wrapping Layer         │  ← Natural language generation
-│      NeMo Guardrails            │  ← Hallucination + safety enforcement
-└─────────────────────────────────┘
-    ↓
-User-facing Recommendation
-    ↓
-┌─────────────────────────────────┐
-│   Monitoring & Dashboard        │  ← Latency, drift, hallucination alerts
-└─────────────────────────────────┘
-```
-
-### Model Pipeline Execution Order
+## Model Pipeline Execution Order
 
 ```
 1.  Load Versioned Data (GCS via DVC)
@@ -136,111 +84,31 @@ User-facing Recommendation
 
 ---
 
-## 3. Repository Structure
+## Table of Contents
 
-```
-SavVio/
-├── data-pipeline/
-│   ├── README.md
-│   ├── SETUP_AND_RUN.md
-│   ├── data-requirements.txt
-│   ├── config/                          # Airflow, Token, GCP config
-│   ├── logs/                            # Pipeline execution logs
-│   ├── tests/
-│   │   ├── ingestion/
-│   │   ├── preprocess/
-│   │   ├── features/
-│   │   ├── validation/
-│   │   ├── database/
-│   │   ├── bias/
-│   │   └── test_data_pipeline_airflow.py
-│   └── dags/
-│       ├── data_pipeline_airflow.py     # Main Airflow DAG
-│       ├── data/
-│       │   ├── raw/                     # Raw data (financial.csv, product.jsonl, review.jsonl)
-│       │   ├── processed/               # Preprocessed outputs
-│       │   ├── features/                # Feature-engineered outputs ← model reads from here
-│       │   ├── raw.dvc
-│       │   ├── processed.dvc
-│       │   └── features.dvc
-│       └── src/
-│           ├── ingestion/               # Data acquisition (GCS, APIs)
-│           │   ├── __init__.py
-│           │   ├── api_loader.py
-│           │   ├── config.py
-│           │   ├── gcs_loader.py
-│           │   └── run_ingestion.py
-│           ├── preprocess/              # Cleaning and transformation
-│           ├── features/                # Pipeline-side feature engineering
-│           ├── validation/
-│           │   └── anomaly/
-│           ├── bias/
-│           └── database/
-│               ├── __init__.py
-│               ├── db_connection.py
-│               ├── db_schema.py
-│               ├── run_database.py
-│               ├── upload_to_db.py
-│               └── vector_embed.py
-│
-└── model-development/                   # ← THIS PHASE
-    ├── README.md
-    ├── config/
-    │   ├── training_config.yaml         # Hyperparams, paths, seeds
-    │   └── bias_config.yaml             # Slice definitions and thresholds
-    ├── src/
-    │   ├── load_data.py                 # Phase 1  — Data loading
-    │   ├── features.py                  # Phase 2  — Feature assembly
-    │   ├── train.py                     # Phase 3  — Training + selection
-    │   ├── tune.py                      # Phase 4  — Ray Tune
-    │   ├── validate.py                  # Phase 5  — Validation + plots
-    │   ├── bias_slicing.py              # Phase 6  — Post-training bias
-    │   ├── sensitivity.py               # Phase 8  — SHAP / LIME
-    │   ├── registry.py                  # Phase 10 — Registry push
-    │   └── llm_wrapper.py              # Phase 12 — LLM + NeMo
-    ├── deterministic_engine/
-    │   └── decision_logic.py            # Green/Yellow/Red rule engine
-    ├── docker/
-    │   └── Dockerfile                   # Full pipeline containerization
-    ├── tests/
-    │   ├── test_load_data.py
-    │   ├── test_features.py
-    │   ├── test_train.py
-    │   ├── test_validate.py
-    │   ├── test_bias_slicing.py
-    │   ├── test_sensitivity.py
-    │   ├── test_registry.py
-    │   ├── test_decision_logic.py
-    │   └── test_llm_wrapper.py
-    ├── experiments/                     # MLflow run artifacts
-    ├── models/                          # Local model staging
-    ├── affordability_features.py        # Legacy → absorbed into src/features.py
-    └── bias_detection.py                # Legacy → absorbed into src/bias_slicing.py
-```
+1. [Phase 1 — Data Loading](#5-phase-1--data-loading)
+2. [Phase 2 — Feature Engineering](#6-phase-2--feature-engineering)
+3. [Phase 3 — Deterministic Decision Engine](#7-phase-3--deterministic-decision-engine)
+4. [Phase 4 — Model Training](#8-phase-4--model-training)
+5. [Phase 5 — Hyperparameter Tuning](#9-phase-5--hyperparameter-tuning)
+7. [Phase 6 — Validation & Metrics](#10-phase-6--validation--metrics)
+8. [Phase 7 — Bias Detection](#11-phase-7--bias-detection)
+9. [Phase 8 — Bias Mitigation](#12-phase-8--bias-mitigation)
+10. [Phase 9 — Model Selection](#13-phase-9--model-selection)
+11. [Phase 10 — Sensitivity & Explainability](#14-phase-10--sensitivity--explainability)
+12. [Phase 11 — Experiment Tracking](#15-phase-11--experiment-tracking)
+13. [Phase 12 — Model Registry Push](#16-phase-12--model-registry-push)
+14. [Phase 13 — CI/CD Automation](#17-phase-13--cicd-automation)
+15. [Phase 14 — LLM Wrapping & Guardrails](#18-phase-14--llm-wrapping--guardrails)
+16. [Phase 15 — Monitoring & Dashboard](#19-phase-15--monitoring--dashboard)
+17. [Runbook](#runbook)
+18. [Testing](#testing)
+19. [Operational Risks & Guardrails](#operational-risks--guardrails)
+20. [Deliverable Checklist](#deliverable-checklist)
 
 ---
 
-## 4. Data Source
-
-Model training reads exclusively from **GCS via DVC-versioned artifacts** produced by the data pipeline. The raw database is never accessed directly during model training.
-
-| Source | Role |
-|--------|------|
-| `GCS data/ bucket (via DVC)` | Primary input for model training — versioned `.csv` and `.jsonl` feature files |
-| `Database` | Used upstream in the data pipeline only — not accessed during model development |
-
-**Input artifacts consumed by model pipeline:**
-
-```
-data-pipeline/dags/data/features/
-├── financial_featured.csv
-├── product_featured.jsonl
-└── review_featured.jsonl
-```
-
----
-
-## Phase 1 — Data Loading
+### Phase 1 — Data Loading
 
 **Objective:** Load the latest versioned and validated datasets from the data pipeline output and ensure reproducible model inputs.
 
@@ -267,7 +135,7 @@ data-pipeline/dags/data/features/
 
 ---
 
-## Phase 2 — Feature Engineering
+### Phase 2 — Feature Engineering
 
 **Objective:** Transform raw pipeline artifacts into model-ready features covering financial, product, and review signals.
 
@@ -292,7 +160,7 @@ data-pipeline/dags/data/features/
 
 ---
 
-## Phase 3 — Deterministic Decision Engine
+### Phase 3 — Deterministic Decision Engine
 
 **Location:** `deterministic_engine/decision_logic.py`
 
@@ -397,7 +265,7 @@ Downgrade policy: Green → Yellow → Red (Red stays Red)
 
 ---
 
-## Phase 4 — Model Training
+### Phase 4 — Model Training
 
 **Objective:** Train baseline candidates for recommendation and decision support.
 
@@ -423,7 +291,7 @@ Downgrade policy: Green → Yellow → Red (Red stays Red)
 
 ---
 
-## Phase 5 — Hyperparameter Tuning
+### Phase 5 — Hyperparameter Tuning
 
 **Objective:** Optimize model performance while preserving fairness and robustness.
 
@@ -451,7 +319,7 @@ Downgrade policy: Green → Yellow → Red (Red stays Red)
 
 ---
 
-## Phase 6 — Validation & Metrics
+### Phase 6 — Validation & Metrics
 
 **Objective:** Validate model performance on unseen data using task-relevant metrics and required visualizations.
 
@@ -477,7 +345,7 @@ Downgrade policy: Green → Yellow → Red (Red stays Red)
 
 ---
 
-## Phase 7 — Bias Detection
+### Phase 7 — Bias Detection
 
 **Objective:** Detect performance disparities across meaningful data subgroups after model training. Bias detection is performed **post-training** — run on validation/test set predictions after model fitting is complete.
 
@@ -509,7 +377,7 @@ Downgrade policy: Green → Yellow → Red (Red stays Red)
 
 ---
 
-## Phase 8 — Bias Mitigation
+### Phase 8 — Bias Mitigation
 
 **Objective:** Apply mitigation strategies to address detected bias and re-evaluate until disparities fall within acceptable thresholds.
 
@@ -537,7 +405,7 @@ Downgrade policy: Green → Yellow → Red (Red stays Red)
 
 
 
-## Phase 9 — Model Selection
+### Phase 9 — Model Selection
 
 **Objective:** Select the final model only after both validation metrics and bias mitigation are satisfactory.
 
@@ -554,7 +422,7 @@ Downgrade policy: Green → Yellow → Red (Red stays Red)
 
 ---
 
-## Phase 10 — Sensitivity & Explainability
+### Phase 10 — Sensitivity & Explainability
 
 **Objective:** Understand how model behavior changes with respect to input features and hyperparameter variation.
 
@@ -578,7 +446,7 @@ Downgrade policy: Green → Yellow → Red (Red stays Red)
 
 ---
 
-## Phase 11 — Experiment Tracking
+### Phase 11 — Experiment Tracking
 
 **Objective:** Track every meaningful experiment and maintain full lineage from data version to model artifact.
 
@@ -602,7 +470,7 @@ Downgrade policy: Green → Yellow → Red (Red stays Red)
 
 ---
 
-## Phase 12 — Model Registry Push
+### Phase 12 — Model Registry Push
 
 **Objective:** Version and store the approved model in the registry for deployment traceability and rollback capability.
 
@@ -634,7 +502,7 @@ Downgrade policy: Green → Yellow → Red (Red stays Red)
 
 ---
 
-## Phase 13 — CI/CD Automation
+### Phase 13 — CI/CD Automation
 
 **Objective:** Automate the full training → validation → bias → registry pipeline on every code change, containerized in Docker, connecting `src ↔ test ↔ DB ↔ ML`.
 
@@ -670,19 +538,6 @@ GitHub Actions / Cloud Build  [Dockerized]
 - Test full end-to-end pipeline in CI environment
 - Document pipeline YAML and Docker setup for reproducibility
 
-### Sample Dockerfile
-
-```dockerfile
-FROM python:3.11-slim
-WORKDIR /app
-COPY requirements.txt .
-RUN pip install -r requirements.txt
-COPY model-development/ ./model-development/
-COPY data-pipeline/ ./data-pipeline/
-CMD ["python", "model-development/src/train.py", \
-     "--config", "model-development/config/training_config.yaml"]
-```
-
 **Tools:**
 
 | Tool | Purpose |
@@ -694,7 +549,7 @@ CMD ["python", "model-development/src/train.py", \
 
 ---
 
-## Phase 14 — LLM Wrapping & Guardrails
+### Phase 14 — LLM Wrapping & Guardrails
 
 **Objective:** Wrap ML and deterministic outputs with an LLM for natural language delivery, enforced by safety guardrails and prompt engineering.
 
@@ -722,7 +577,7 @@ CMD ["python", "model-development/src/train.py", \
 
 ---
 
-## Phase 15 — Monitoring & Dashboard
+### Phase 15 — Monitoring & Dashboard
 
 **Objective:** Monitor the live system for latency, drift, hallucination flags, and recommendation quality after deployment.
 
@@ -750,37 +605,7 @@ CMD ["python", "model-development/src/train.py", \
 
 ---
 
-## 20. Runbook
-
-```bash
-# 1. Activate environment
-source .venv/bin/activate
-# OR use Docker:
-docker build -t savvio-model ./docker
-docker run savvio-model
-
-# 2. Pull versioned data from GCS via DVC
-cd data-pipeline/dags/data
-dvc pull
-cd ../../..
-
-# 3. Run feature engineering
-python model-development/affordability_features.py
-
-# 4. Train model
-python model-development/src/train.py \
-  --config model-development/config/training_config.yaml
-
-# 5. Run post-training bias detection
-python model-development/bias_detection.py
-
-# 6. Push approved model to registry
-python model-development/src/registry.py --model <best-run-id>
-```
-
----
-
-## 21. Testing
+### 16. Testing
 
 ```bash
 pytest model-development/tests
@@ -802,7 +627,7 @@ pytest model-development/tests
 
 ---
 
-## 22. Operational Risks & Guardrails
+### 17. Operational Risks & Guardrails
 
 ### Risks
 
@@ -825,7 +650,7 @@ pytest model-development/tests
 
 ---
 
-## 23. Deliverable Checklist
+### 18. Deliverable Checklist
 
 ### Professor Guidelines
 
