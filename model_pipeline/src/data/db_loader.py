@@ -4,10 +4,10 @@ Database Data Loader for the Model Pipeline.
 Reads training data directly from the SavVio PostgreSQL database
 populated by the Airflow Data Pipeline, instead of relying on CSV exports.
 
-Leverages the same connection pattern as data-pipeline/dags/src/database/db_connection.py
+Leverages the same connection pattern as data_pipeline/dags/src/database/db_connection.py
 so both pipelines talk to the same DB with the same env vars.
 
-Environment variables (same as data-pipeline):
+Environment variables (same as data_pipeline):
     DB_USER      (default: postgres)
     DB_PASSWORD  (default: postgres)
     DB_HOST      (default: host.docker.internal — reaches Mac-local PG from Docker)
@@ -32,13 +32,13 @@ logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
-# Connection (mirrors data-pipeline/dags/src/database/db_connection.py)
+# Connection (mirrors data_pipeline/dags/src/database/db_connection.py)
 # ---------------------------------------------------------------------------
 
 def _build_connection_url() -> str:
     """
     Build PostgreSQL connection string from environment variables.
-    Same env vars used by the data-pipeline so both point to the same DB.
+    Same env vars used by the data_pipeline so both point to the same DB.
     """
     user = os.environ.get("DB_USER", "postgres")
     password = os.environ.get("DB_PASSWORD", "postgres")
@@ -69,7 +69,7 @@ def load_financial_profiles(engine=None) -> pd.DataFrame:
     """
     Load all rows from the `financial_profiles` table.
 
-    Columns returned match the schema in data-pipeline/dags/src/database/db_schema.py:
+    Columns returned match the schema in data_pipeline/dags/src/database/db_schema.py:
         user_id, monthly_income, monthly_expenses, savings_balance, has_loan,
         loan_amount, monthly_emi, loan_interest_rate, loan_term_months,
         credit_score, employment_status, region, discretionary_income,

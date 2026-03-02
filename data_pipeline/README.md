@@ -134,7 +134,7 @@ Establish the foundational project structure, dependencies, and development envi
 
    ```
    SavVio/
-   ├── data-pipeline/
+   ├── data_pipeline/
    │   ├── README.md              # This file
    │   ├── SETUP_AND_RUN.md       # Setup and run instructions (reproducibility)
    │   ├── data-requirements.txt  # Python dependencies (or use repo root requirements.txt)
@@ -345,10 +345,10 @@ Version control the raw ingested data to ensure reproducibility and enable rollb
 
 ### Steps
 
-1. **Add raw data to DVC tracking** (run from `data-pipeline/dags/data`)
+1. **Add raw data to DVC tracking** (run from `data_pipeline/dags/data`)
 
    ```bash
-   cd data-pipeline/dags/data
+   cd data_pipeline/dags/data
    dvc add raw
    ```
 
@@ -629,10 +629,10 @@ Version control the processed data to track transformations.
 
 ### Steps
 
-1. **Add processed data to DVC** (run from `data-pipeline/dags/data`)
+1. **Add processed data to DVC** (run from `data_pipeline/dags/data`)
 
    ```bash
-   cd data-pipeline/dags/data
+   cd data_pipeline/dags/data
    dvc add processed
    ```
 
@@ -752,10 +752,10 @@ Version control the feature-engineered data for reproducibility.
 
 ### Steps
 
-1. **Add features to DVC** (run from `data-pipeline/dags/data`)
+1. **Add features to DVC** (run from `data_pipeline/dags/data`)
 
    ```bash
-   cd data-pipeline/dags/data
+   cd data_pipeline/dags/data
    dvc add features
    ```
 

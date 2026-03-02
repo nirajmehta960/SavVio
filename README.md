@@ -28,7 +28,7 @@ The system will provide **Green/Yellow/Red** light recommendations before users 
 ```
 SavVio/
 │
-├── data-pipeline/              # Data ingestion and preprocessing pipeline
+├── data_pipeline/              # Data ingestion and preprocessing pipeline
 │   ├── dags/                   # Airflow DAG definitions
 │   ├── data/                   # Data storage (versioned with DVC)
 │   │   ├── raw/                # Raw data from sources
@@ -39,7 +39,7 @@ SavVio/
 │   ├── logs/                   # Pipeline execution logs
 │   └── config/                 # Pipeline configuration files
 │
-├── model-development/          # ML model development and training
+├── model_pipeline/          # ML model development and training
 │   ├── src/                    # Source code for model training
 │   ├── notebooks/              # Jupyter notebooks for experimentation
 │   ├── models/                 # Trained model artifacts
@@ -190,8 +190,8 @@ Monitoring will use:
 
 Configuration files will be added as the project develops:
 
-- `data-pipeline/config/pipeline_config.yaml` - Data pipeline settings (to be added)
-- `model-development/config/training_config.yaml` - Model training parameters (to be added)
+- `data_pipeline/config/pipeline_config.yaml` - Data pipeline settings (to be added)
+- `model_pipeline/config/training_config.yaml` - Model training parameters (to be added)
 - `deployment/config/deployment_config.yaml` - Deployment settings (to be added)
 - Environment variables and secrets management (to be added)
 

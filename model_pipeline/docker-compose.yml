@@ -25,7 +25,7 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
     ports:
-      # NOTE: Using 5433 on host to avoid conflict with data-pipeline Airflow Postgres (5432)
+      # NOTE: Using 5433 on host to avoid conflict with data_pipeline Airflow Postgres (5432)
       - "5433:5432"
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}" ]
@@ -152,7 +152,7 @@ services:
     volumes:
       - ./src:/app/src
       - ./model:/app/model
-      - ../data-pipeline/dags/data:/app/data
+      - ../data_pipeline/dags/data:/app/data
     environment:
       MLFLOW_TRACKING_URI: http://mlflow-server:${MLFLOW_PORT}
     ports:

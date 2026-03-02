@@ -10,7 +10,7 @@ import logging
 from pathlib import Path
 
 # Fix path to ensure we can import 'preprocess' package
-# This script is located at data-pipeline/dags/src/preprocess/run_preprocessing.py
+# This script is located at data_pipeline/dags/src/preprocess/run_preprocessing.py
 current_script_path = Path(__file__).resolve()
 src_dir = current_script_path.parent.parent          # .../dags/src/
 dags_root = src_dir.parent                           # .../dags/

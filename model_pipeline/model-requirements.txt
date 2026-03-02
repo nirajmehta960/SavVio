@@ -12,7 +12,7 @@ numpy>=1.26.2
 scikit-learn 
 
 # Vector Embeddings
-# sentence-transformers  # Not needed in model pipeline; used by data-pipeline for pgvector embeddings
+# sentence-transformers  # Not needed in model pipeline; used by data_pipeline for pgvector embeddings
 
 # For PostgreSQL
 psycopg2-binary

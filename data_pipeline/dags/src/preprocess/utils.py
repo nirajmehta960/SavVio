@@ -9,12 +9,12 @@ from src.utils import setup_logging
 
 
 def get_raw_path(filename: str, base_dir: str = "data/raw") -> str:
-    """Return path to a raw data file (relative to data-pipeline)."""
+    """Return path to a raw data file (relative to data_pipeline)."""
     return os.path.join(base_dir, filename)
 
 
 def get_processed_path(filename: str, base_dir: str = "data/processed") -> str:
-    """Return path to a processed data file (relative to data-pipeline)."""
+    """Return path to a processed data file (relative to data_pipeline)."""
     return os.path.join(base_dir, filename)
 
 

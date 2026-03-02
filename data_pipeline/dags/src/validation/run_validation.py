@@ -24,7 +24,7 @@ validation_dir = current_script_path.parent          # .../dags/src/validation/
 
 
 def _find_pipeline_root(start: Path) -> Path:
-    """Find data-pipeline root by looking for data/ and config/ directories."""
+    """Find data_pipeline root by looking for data/ and config/ directories."""
     for candidate in [start, *start.parents]:
         if (candidate / "data").exists() and (candidate / "src").exists():
             return candidate
@@ -33,7 +33,7 @@ def _find_pipeline_root(start: Path) -> Path:
 
 pipeline_root = _find_pipeline_root(current_script_path.parent)
 
-# Ensure running from data-pipeline root so relative data paths work
+# Ensure running from data_pipeline root so relative data paths work
 if os.getcwd() != str(pipeline_root):
     print(f"Changing working directory to: {pipeline_root}")
     os.chdir(pipeline_root)
