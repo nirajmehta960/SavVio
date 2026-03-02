@@ -50,25 +50,25 @@ ENV/
 .dvcignore
 
 # Data files (large files should be tracked with DVC)
-data-pipeline/data/raw/*
-data-pipeline/data/processed/*
-data-pipeline/data/validated/*
-data-pipeline/dags/data/quarantine/*
-!data-pipeline/data/raw/.gitkeep
-!data-pipeline/data/processed/.gitkeep
-!data-pipeline/data/validated/.gitkeep
+data_pipeline/data/raw/*
+data_pipeline/data/processed/*
+data_pipeline/data/validated/*
+data_pipeline/dags/data/quarantine/*
+!data_pipeline/data/raw/.gitkeep
+!data_pipeline/data/processed/.gitkeep
+!data_pipeline/data/validated/.gitkeep
 
 # Model artifacts (tracked with DVC or model registry)
-model-development/models/*
-!model-development/models/.gitkeep
-model-development/experiments/*
-!model-development/experiments/.gitkeep
+model_development/models/*
+!model_development/models/.gitkeep
+model_development/experiments/*
+!model_development/experiments/.gitkeep
 
 # Logs
 *.log
 logs/
-data-pipeline/logs/*
-!data-pipeline/logs/.gitkeep
+data_pipeline/logs/*
+!data_pipeline/logs/.gitkeep
 
 # Airflow
 airflow.cfg
@@ -111,7 +111,7 @@ temp/
 # Secrets and credentials
 secrets/
 credentials/
-data-pipeline/config/
+data_pipeline/config/
 *.pem
 *.key
 *.crt
