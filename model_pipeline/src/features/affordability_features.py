@@ -13,6 +13,11 @@ in PostgreSQL by their respective pipeline modules:
 
 This module combines them ON DEMAND for a specific user-product pair.
 
+Additionally, this module provides batch scenario generation for ML training:
+    - generate_scenarios() pairs real users with real products randomly.
+    - Labels are assigned by the DecisionEngine (deterministic_engine/decision_logic.py).
+    - Output becomes the training dataset for downstream ML models.
+
 Usage (by Decision API / Deterministic Engine):
     from features.affordability_features import compute_affordability
 
@@ -26,14 +31,26 @@ Usage (by Decision API / Deterministic Engine):
         },
         product_price=799.99
     )
+
+Usage (batch — for ML training label generation):
+    from features.affordability_features import generate_scenarios
+
+    scenarios_df = generate_scenarios(financial_profiles_df, products_df, n_scenarios=50000)
 """
 
 import logging
 from dataclasses import dataclass
 from typing import Optional
 
+import numpy as np
+import pandas as pd
+
 logger = logging.getLogger(__name__)
 
+
+# ---------------------------------------------------------------------------
+# Inference-time affordability computation
+# ---------------------------------------------------------------------------
 
 @dataclass
 class AffordabilityResult:
@@ -79,7 +96,7 @@ def compute_affordability(
     emi = user_financial_profile.get("monthly_emi", 0.0)
 
     # Metric 1: Price-To-Income Ratio.
-    # What percentage of one month's income does this product cost?
+    # Definition: What percentage of one month's income does this product cost?
     price_to_income = None
     if income > 0:
         price_to_income = round(product_price / income, 4)
@@ -87,11 +104,11 @@ def compute_affordability(
         logger.warning("Cannot compute price_to_income_ratio: monthly_income is 0.")
 
     # Metric 2: Affordability Score.
-    # How much discretionary budget remains after buying this product?
+    # Definition: How much discretionary budget remains after buying this product?
     affordability_score = round(discretionary - product_price, 2)
 
     # Metric 3: Residual Utility Score (RUS).
-    # How many months of financial runway remain if user spends savings on this?
+    # Definition: How many months of financial runway remain if user spends savings on this?
     residual_utility = None
     total_obligations = expenses + emi
     if total_obligations > 0:
@@ -113,18 +130,16 @@ def compute_affordability(
     return result
 
 
-# =============================================================================
-# Synthetic Scenario Generation & Labeling (Deterministic Engine)
-# =============================================================================
+# ---------------------------------------------------------------------------
+# Synthetic Scenario Generation & Labeling (for ML Training)
+# ---------------------------------------------------------------------------
 # Used to create labeled training data by pairing real user financial profiles
-# with real products and applying rule-based labeling (GREEN / YELLOW / RED).
+# with real products and applying rule-based labeling (GREEN / YELLOW / RED)
+# via the DecisionEngine.
+#
 # This bridges the gap between the pre-computed features in PostgreSQL and the
 # supervised ML model that needs labeled examples.
-# =============================================================================
-
-import pandas as pd
-import numpy as np
-
+# ---------------------------------------------------------------------------
 
 def generate_scenarios(
     financial_profiles: pd.DataFrame,
@@ -135,13 +150,21 @@ def generate_scenarios(
     """
     Generate synthetic user-product scenarios by randomly sampling pairs.
 
+    Each scenario row contains:
+        - User financial columns (from financial_profiles table)
+        - Product columns: price, average_rating, rating_number, rating_variance
+        - Computed affordability metrics: affordability_score, price_to_income_ratio,
+          residual_utility_score
+        - A deterministic GREEN/YELLOW/RED label from the DecisionEngine
+
     Args:
         financial_profiles: DataFrame from `financial_profiles` table.
             Required columns: monthly_income, discretionary_income,
                               savings_balance, monthly_expenses, monthly_emi,
                               emergency_fund_months
         products: DataFrame from `products` table.
-            Required columns: price, product_id
+            Required columns: price, product_id, average_rating, rating_number,
+                              rating_variance
         n_scenarios: Number of random (user, product) pairs to generate.
         random_state: Seed for reproducibility.
 
@@ -149,7 +172,10 @@ def generate_scenarios(
         DataFrame with one row per scenario containing user features,
         product price, computed affordability metrics, and a rule-based label.
     """
+    from deterministic_engine.decision_logic import DecisionEngine
+
     rng = np.random.default_rng(random_state)
+    engine = DecisionEngine()
 
     user_indices = rng.integers(0, len(financial_profiles), size=n_scenarios)
     product_indices = rng.integers(0, len(products), size=n_scenarios)
@@ -157,24 +183,30 @@ def generate_scenarios(
     users = financial_profiles.iloc[user_indices].reset_index(drop=True)
     prods = products.iloc[product_indices].reset_index(drop=True)
 
-    # Compute affordability metrics for each scenario
+    # Build scenario table — combine user financial data with product signals.
     scenarios = users.copy()
     scenarios["product_id"] = prods["product_id"].values
     scenarios["product_price"] = prods["price"].values
+    scenarios["average_rating"] = prods["average_rating"].values
+    scenarios["rating_number"] = prods["rating_number"].values
+    scenarios["rating_variance"] = prods["rating_variance"].values
 
+    # Compute affordability metrics for each scenario.
     scenarios["affordability_score"] = (
         scenarios["discretionary_income"] - scenarios["product_price"]
     )
     scenarios["price_to_income_ratio"] = (
-        scenarios["product_price"] / scenarios["monthly_income"].replace(0, np.nan)
+        scenarios["product_price"]
+        / scenarios["monthly_income"].replace(0, np.nan)
     )
     scenarios["residual_utility_score"] = (
         (scenarios["savings_balance"] - scenarios["product_price"])
         / (scenarios["monthly_expenses"] + scenarios["monthly_emi"]).replace(0, np.nan)
     )
 
-    # Label each scenario using deterministic rules
-    scenarios["label"] = scenarios.apply(label_scenario, axis=1)
+    # Label each scenario using the full 4-tier deterministic engine.
+    logger.info("Labeling %d scenarios with DecisionEngine...", len(scenarios))
+    scenarios["label"] = scenarios.apply(engine.decide_row, axis=1)
 
     logger.info(
         "Generated %d scenarios — label distribution:\n%s",
@@ -182,29 +214,3 @@ def generate_scenarios(
         scenarios["label"].value_counts().to_string(),
     )
     return scenarios
-
-
-def label_scenario(row: pd.Series) -> str:
-    """
-    Deterministic labeling rules for a user-product scenario.
-
-    Rules:
-        RED    — Cannot afford AND no emergency cushion
-                 (affordability_score < 0 AND emergency_fund_months < 1)
-        YELLOW — Marginal: can't quite afford OR thin emergency cushion
-                 (affordability_score < 0 OR emergency_fund_months < 3)
-        GREEN  — Comfortably affordable with adequate safety net
-
-    Args:
-        row: A single scenario row with at least `affordability_score`
-             and `emergency_fund_months`.
-
-    Returns:
-        One of "RED", "YELLOW", "GREEN".
-    """
-    if row["affordability_score"] < 0 and row.get("emergency_fund_months", 0) < 1:
-        return "RED"
-    elif row["affordability_score"] < 0 or row.get("emergency_fund_months", 0) < 3:
-        return "YELLOW"
-    else:
-        return "GREEN"
