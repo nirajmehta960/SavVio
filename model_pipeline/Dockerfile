@@ -30,4 +30,5 @@ COPY model-requirements.txt .
 RUN pip install --upgrade pip && \
     pip install -r model-requirements.txt
 
-CMD ["tail", "-f", "/dev/null"]
+# Install savviocore in editable mode (mounted via compose)
+CMD pip install -e /app/savviocore && tail -f /dev/null

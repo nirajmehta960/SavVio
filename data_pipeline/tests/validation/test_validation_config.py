@@ -20,20 +20,15 @@ PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 # ---------------------------------------------------------------------------
 # Load module under test
 # ---------------------------------------------------------------------------
+import importlib.util
+import savviocore
+
 def _load():
-    candidates = [
-        os.path.join(PROJECT_ROOT, "dags", "src", "validation", "validation_config.py"),
-        os.path.join(PROJECT_ROOT, "dags", "src", "validation_config.py"),
-    ]
-    for fpath in candidates:
-        if not os.path.isfile(fpath):
-            continue
-        spec = importlib.util.spec_from_file_location("validation_config", fpath)
-        mod = importlib.util.module_from_spec(spec)
-        sys.modules["validation_config"] = mod
-        spec.loader.exec_module(mod)
-        return mod
-    raise ImportError("Could not find validation_config.py. Searched:\n" + "\n".join(candidates))
+    fpath = os.path.join(savviocore.__path__[0], "validation", "validation_config.py")
+    spec = importlib.util.spec_from_file_location("real_validation_config", fpath)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
 
 M = _load()
 Severity        = M.Severity

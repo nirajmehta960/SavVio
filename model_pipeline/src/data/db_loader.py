@@ -26,39 +26,16 @@ Usage:
 import os
 import logging
 import pandas as pd
-from sqlalchemy import create_engine, text
+from savviocore.database.db_connection import get_engine
+from sqlalchemy import text
 
 logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
-# Connection (mirrors data_pipeline/dags/src/database/db_connection.py)
+# Connection (Now imported from savviocore)
 # ---------------------------------------------------------------------------
-
-def _build_connection_url() -> str:
-    """
-    Build PostgreSQL connection string from environment variables.
-    Same env vars used by the data_pipeline so both point to the same DB.
-    """
-    user = os.environ.get("DB_USER", "postgres")
-    password = os.environ.get("DB_PASSWORD", "postgres")
-    # From inside Docker, use host.docker.internal to reach Mac-local PG.
-    # Override with DB_HOST env var when running natively or in prod.
-    host = os.environ.get("DB_HOST", "host.docker.internal")
-    port = os.environ.get("DB_PORT", "5432")
-    name = os.environ.get("DB_NAME", "savvio_dev")
-    return f"postgresql+psycopg2://{user}:{password}@{host}:{port}/{name}"
-
-
-def get_engine(echo: bool = False):
-    """Create a SQLAlchemy engine pointing to the SavVio application DB."""
-    url = _build_connection_url()
-    logger.info("Connecting to SavVio DB at %s:****@%s:%s/%s",
-                os.environ.get("DB_USER", "postgres"),
-                os.environ.get("DB_HOST", "host.docker.internal"),
-                os.environ.get("DB_PORT", "5432"),
-                os.environ.get("DB_NAME", "savvio_dev"))
-    return create_engine(url, echo=echo, pool_pre_ping=True)
+# DB Engine creation is handled by savviocore.database.db_connection
 
 
 # ---------------------------------------------------------------------------

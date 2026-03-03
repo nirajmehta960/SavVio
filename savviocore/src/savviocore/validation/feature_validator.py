@@ -24,26 +24,8 @@ try:
 except ImportError:
     from great_expectations.dataset.pandas_dataset import PandasDataset
 
-# Resolve local imports from the validation package.
-current_file_path = Path(__file__).resolve()
-validation_dir = current_file_path.parent.parent
-if str(validation_dir) not in sys.path:
-    sys.path.insert(0, str(validation_dir))
-
-def _find_pipeline_root(start: Path) -> Path:
-    for candidate in [start, *start.parents]:
-        if (candidate / "data").exists() and (candidate / "src").exists():
-            return candidate
-    return current_file_path.parents[2]  # fallback: .../dags/
-
-
-# Ensure running from data_pipeline root so relative data paths work
-pipeline_root = _find_pipeline_root(current_file_path.parent)
-if os.getcwd() != str(pipeline_root):
-    os.chdir(pipeline_root)
-
 from typing import Optional, List
-from validation_config import (
+from savviocore.validation.validation_config import (
     CheckResult, Severity, ValidationReport, load_thresholds,
 )
 

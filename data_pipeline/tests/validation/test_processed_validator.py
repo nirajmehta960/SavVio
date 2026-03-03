@@ -57,12 +57,12 @@ class ValidationReport:
     def print_summary(self): pass
     def save(self): pass
 
-_vc = types.ModuleType("validation_config")
+_vc = types.ModuleType("savviocore.validation.validation_config")
 _vc.Severity         = Severity
 _vc.CheckResult      = CheckResult
 _vc.ValidationReport = ValidationReport
 _vc.load_thresholds  = lambda path=None: {}
-sys.modules["validation_config"] = _vc
+sys.modules["savviocore.validation.validation_config"] = _vc
 
 # ---------------------------------------------------------------------------
 # Stub great_expectations

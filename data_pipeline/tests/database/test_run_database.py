@@ -128,7 +128,7 @@ def test_load_reviews_task_positive(mock_setup, mock_load_reviews, tmp_path):
 def test_setup_database_task_creates_tables(mock_get_engine):
     mock_engine = MagicMock(name="engine")
     mock_get_engine.return_value = mock_engine
-    with patch("db_schema.create_tables") as mock_create:
+    with patch("savviocore.database.db_schema.create_tables") as mock_create:
         orchestrator.setup_database_task()
     mock_get_engine.assert_called_once()
     mock_create.assert_called_once_with(mock_engine)

@@ -42,10 +42,10 @@ if os.getcwd() != str(pipeline_root):
 if str(validation_dir) not in sys.path:
     sys.path.insert(0, str(validation_dir))
 
-from validation_config import ValidationReport
+from savviocore.validation.validation_config import ValidationReport
 from validate.raw_validator import run_raw_validation
 from validate.processed_validator import run_processed_validation
-from validate.feature_validator import run_feature_validation
+from savviocore.validation.feature_validator import run_feature_validation
 from anomaly.anomaly_validator import run_anomaly_validation, run_raw_anomaly_validation
 
 logger = logging.getLogger(__name__)

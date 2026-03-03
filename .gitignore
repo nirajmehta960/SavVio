@@ -26,6 +26,7 @@ venv/
 env/
 ENV/
 .venv
+.savvio_venv/
 
 # IDEs
 .vscode/
