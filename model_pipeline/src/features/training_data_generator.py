@@ -51,7 +51,18 @@ def _sample_random(
     n_scenarios: int,
     rng: np.random.Generator,
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
-    """Pure uniform random pairing — legacy behaviour."""
+    """
+    Pure uniform random pairing — legacy behaviour.
+    
+    Args:
+        financial_profiles: DataFrame containing user financial profiles.
+        products: DataFrame containing product data.
+        n_scenarios: Total number of scenarios to generate.
+        rng: NumPy random generator instance for reproducibility.
+        
+    Returns:
+        A tuple of (sampled_users_df, sampled_products_df), both of length n_scenarios.
+    """
     user_idx = rng.integers(0, len(financial_profiles), size=n_scenarios)
     prod_idx = rng.integers(0, len(products), size=n_scenarios)
     return (
@@ -75,6 +86,15 @@ def _sample_stratified(
 
     Empty cells are skipped and their quota is redistributed evenly
     across remaining cells.
+    
+    Args:
+        financial_profiles: DataFrame containing user financial profiles.
+        products: DataFrame containing product data.
+        n_scenarios: Total number of scenarios to generate.
+        rng: NumPy random generator instance for reproducibility.
+        
+    Returns:
+        A tuple of (sampled_users_df, sampled_products_df), both of length n_scenarios.
     """
     # Assign brackets.
     income_bracket = pd.cut(
@@ -155,6 +175,14 @@ def _compute_features_and_label(
     """
     Given paired user and product DataFrames of equal length, compute the
     6 financial features and label each row with the DecisionEngine.
+    
+    Args:
+        users: DataFrame containing sampled user financial profiles.
+        prods: DataFrame containing sampled products, matched row-by-row with users.
+        
+    Returns:
+        A single DataFrame combining user and product data, along with 
+        6 newly computed financial features and a final decision 'label'.
     """
     engine = DecisionEngine()
 
