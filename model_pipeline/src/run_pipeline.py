@@ -21,7 +21,7 @@ import sys
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from config import Config
-from features.engineering import build_feature_matrix
+from model_pipeline.src.features.engineering_ import build_feature_matrix
 from core_models.train import train_model, log_model_to_mlflow
 from core_models.evaluate import evaluate_model
 from guards.bias_detection import evaluate_bias
@@ -30,6 +30,8 @@ from llm.prompt_engin import apply_llm_guardrails
 import mlflow
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
+from mlflow.models.signature import infer_signature
+
 
 
 def main():
@@ -103,7 +105,6 @@ def main():
             apply_llm_guardrails(y_pred[0], {"region": sens_test.iloc[0]["region"]}, 0.95)
 
             # Log Model Artifact
-            from mlflow.models.signature import infer_signature
             signature = infer_signature(X_train, model.predict(X_train))
             log_model_to_mlflow(model, model_type, signature)
 
