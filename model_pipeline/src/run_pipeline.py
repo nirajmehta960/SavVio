@@ -21,7 +21,7 @@ import sys
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from config import Config
-from model_pipeline.src.features.engineering_ import build_feature_matrix
+from model_pipeline.src.features.feature_engineering import build_feature_matrix
 from core_models.train import train_model, log_model_to_mlflow
 from core_models.evaluate import evaluate_model
 from guards.bias_detection import evaluate_bias
