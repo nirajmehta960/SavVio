@@ -1,13 +1,14 @@
 """
 Unit tests for affordability features and scenario generation.
 
-Tests compute_affordability() (inference-time) and generate_scenarios()
-(batch label generation with DecisionEngine).
+Tests compute_affordability() (inference-time, 6 financial features) and
+generate_scenarios() (batch label generation with DecisionEngine).
 """
 
 import sys
 import os
 import pytest
+import math
 import numpy as np
 import pandas as pd
 
@@ -20,68 +21,79 @@ from features.affordability_features import (
 )
 
 
-# ── compute_affordability (inference-time) ───────────────────────────────────
+# ── compute_affordability ────────────────────────────────────────────────────
 
 class TestComputeAffordability:
 
-    def test_basic_computation(self):
-        profile = {
+    def _default_profile(self):
+        return {
             "monthly_income": 5000.0,
             "discretionary_income": 1200.0,
             "savings_balance": 8000.0,
             "monthly_expenses": 2800.0,
             "monthly_emi": 1000.0,
+            "loan_amount": 15000.0,
+            "credit_score": 720,
         }
-        result = compute_affordability(profile, product_price=200.0)
 
-        assert isinstance(result, AffordabilityResult)
-        assert result.price_to_income_ratio == pytest.approx(200 / 5000, abs=1e-3)
+    def test_affordability_score(self):
+        result = compute_affordability(self._default_profile(), 200.0)
         assert result.affordability_score == pytest.approx(1200 - 200, abs=0.01)
+
+    def test_price_to_income_ratio(self):
+        result = compute_affordability(self._default_profile(), 200.0)
+        assert result.price_to_income_ratio == pytest.approx(200 / 5000, abs=1e-3)
+
+    def test_residual_utility_score(self):
+        result = compute_affordability(self._default_profile(), 200.0)
         assert result.residual_utility_score == pytest.approx(
             (8000 - 200) / (2800 + 1000), abs=1e-3
         )
 
-    def test_zero_income(self):
-        profile = {
-            "monthly_income": 0,
-            "discretionary_income": 0,
-            "savings_balance": 1000,
-            "monthly_expenses": 500,
-            "monthly_emi": 0,
-        }
+    def test_savings_to_price_ratio(self):
+        result = compute_affordability(self._default_profile(), 200.0)
+        assert result.savings_to_price_ratio == pytest.approx(8000 / 200, abs=1e-3)
+
+    def test_net_worth_indicator(self):
+        result = compute_affordability(self._default_profile(), 200.0)
+        assert result.net_worth_indicator == pytest.approx((8000 - 15000) / 5000, abs=1e-3)
+
+    def test_credit_risk_indicator(self):
+        result = compute_affordability(self._default_profile(), 200.0)
+        assert result.credit_risk_indicator == pytest.approx((720 - 300) / 550, abs=1e-3)
+
+    def test_zero_income_guards(self):
+        profile = self._default_profile()
+        profile["monthly_income"] = 0
+        profile["discretionary_income"] = 0
         result = compute_affordability(profile, product_price=100.0)
-        assert result.price_to_income_ratio is None  # can't divide by zero
+        assert result.price_to_income_ratio is None
         assert result.affordability_score == -100.0
 
-    def test_zero_obligations(self):
-        profile = {
-            "monthly_income": 5000,
-            "discretionary_income": 5000,
-            "savings_balance": 10000,
-            "monthly_expenses": 0,
-            "monthly_emi": 0,
-        }
+    def test_zero_obligations_guards(self):
+        profile = self._default_profile()
+        profile["monthly_expenses"] = 0
+        profile["monthly_emi"] = 0
         result = compute_affordability(profile, product_price=50.0)
-        assert result.residual_utility_score is None  # can't divide by zero
+        assert result.residual_utility_score is None
 
-    def test_to_dict(self):
-        profile = {
-            "monthly_income": 5000,
-            "discretionary_income": 1000,
-            "savings_balance": 5000,
-            "monthly_expenses": 2000,
-            "monthly_emi": 500,
-        }
-        result = compute_affordability(profile, product_price=100)
+    def test_to_dict_has_all_6_keys(self):
+        result = compute_affordability(self._default_profile(), 100)
         d = result.to_dict()
-        assert set(d.keys()) == {
-            "price_to_income_ratio",
-            "affordability_score",
-            "residual_utility_score",
+        assert len(d) == 6
+        expected_keys = {
+            "affordability_score", "price_to_income_ratio", "residual_utility_score",
+            "savings_to_price_ratio", "net_worth_indicator", "credit_risk_indicator",
         }
+        assert set(d.keys()) == expected_keys
+
+    def test_no_product_info_defaults(self):
+        """compute_affordability without product_info should not crash."""
+        result = compute_affordability(self._default_profile(), 200.0)
+        assert result.affordability_score is not None
 
 
-# ── generate_scenarios (batch) ───────────────────────────────────────────────
+# ── generate_scenarios ───────────────────────────────────────────────────────
 
 def _make_financial_df(n=50):
     rng = np.random.default_rng(42)
@@ -130,18 +142,27 @@ class TestGenerateScenarios:
         )
         assert len(scenarios) == 100
 
-    def test_has_required_columns(self):
+    def test_has_all_6_feature_columns(self):
         scenarios = generate_scenarios(
             _make_financial_df(), _make_products_df(), n_scenarios=50
         )
         required = [
             "product_id", "product_price",
-            "average_rating", "rating_number", "rating_variance",
-            "affordability_score", "price_to_income_ratio",
-            "residual_utility_score", "label",
+            # 6 financial features (no product review features).
+            "affordability_score", "price_to_income_ratio", "residual_utility_score",
+            "savings_to_price_ratio", "net_worth_indicator", "credit_risk_indicator",
+            "label",
         ]
         for col in required:
             assert col in scenarios.columns, f"Missing column: {col}"
+
+    def test_no_review_features_computed(self):
+        """review_confidence_score and review_polarization_index are NOT computed."""
+        scenarios = generate_scenarios(
+            _make_financial_df(), _make_products_df(), n_scenarios=50
+        )
+        assert "review_confidence_score" not in scenarios.columns
+        assert "review_polarization_index" not in scenarios.columns
 
     def test_labels_are_valid(self):
         scenarios = generate_scenarios(
@@ -150,14 +171,14 @@ class TestGenerateScenarios:
         assert set(scenarios["label"].unique()).issubset({"GREEN", "YELLOW", "RED"})
 
     def test_not_all_one_label(self):
-        """With varied synthetic data, we should get at least 2 label classes."""
+        """With varied synthetic data we should get at least 2 label classes."""
         scenarios = generate_scenarios(
             _make_financial_df(100), _make_products_df(50), n_scenarios=500
         )
         assert scenarios["label"].nunique() >= 2
 
     def test_reproducibility(self):
-        """Same seed → same output."""
+        """Same seed produces identical output."""
         fin = _make_financial_df()
         prod = _make_products_df()
         s1 = generate_scenarios(fin, prod, n_scenarios=50, random_state=123)

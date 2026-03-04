@@ -1,24 +1,41 @@
 """
 Deterministic Decision Engine for SavVio.
 
-Pure-Python rule system that assigns GREEN / YELLOW / RED labels
-to (user, product) pairs based on financial safety and product
-signal quality.  This engine is AUTHORITATIVE — neither the ML
-model nor the LLM wrapper may override its output.
+Rule-based labeling system that assigns GREEN / YELLOW / RED to
+(user, product) pairs. This engine is AUTHORITATIVE — neither the
+ML model nor the LLM wrapper may override its output.
 
-Rule evaluation order (most conservative first):
-    Tier 1  Hard-stop safety checks     → RED  (immediate return)
-    Tier 2  Caution checks              → YELLOW candidate
-    Tier 3  Confidence downgrade checks → downgrade one level
-    Tier 4  Final color assignment
+The engine answers: "Should this user buy this product?"
 
-Usage (batch — for label generation):
+    GREEN  — Purchase fits comfortably within the user's financial life.
+    YELLOW — Genuine concern — the user should pause and think.
+    RED    — Purchase would cause financial harm.
+
+Design principle:
+    Every rule combines signals from at least TWO independent correlation
+    groups to avoid false triggers from a single underlying cause.
+
+Correlation groups:
+    Group 1 — Income capacity:   affordability_score, discretionary_income,
+                                  price_to_income_ratio
+    Group 2 — Savings depth:     saving_to_income_ratio, savings_to_price_ratio,
+                                  emergency_fund_months, residual_utility_score
+    Group 3 — Debt burden:       debt_to_income_ratio, monthly_expense_burden_ratio
+    Group 4 — Independent:       credit_risk_indicator, net_worth_indicator
+
+Features used — 11 total (5 DB + 6 computed), ALL financial:
+    DB:       discretionary_income, debt_to_income_ratio, saving_to_income_ratio,
+              monthly_expense_burden_ratio, emergency_fund_months
+    Computed: affordability_score, price_to_income_ratio, residual_utility_score,
+              savings_to_price_ratio, net_worth_indicator, credit_risk_indicator
+
+Usage (batch — label generation for ML training):
     from deterministic_engine.decision_logic import DecisionEngine
     engine = DecisionEngine()
-    result = engine.decide(financial_row, product_row)
-
-Usage (single row in a DataFrame via .apply):
     df["label"] = df.apply(engine.decide_row, axis=1)
+
+Usage (single pair — Decision API):
+    result = engine.decide(financial_dict, product_dict)
 """
 
 import logging
@@ -29,52 +46,29 @@ from typing import List, Optional
 logger = logging.getLogger(__name__)
 
 
-# ---------------------------------------------------------------------------
-# Result container
-# ---------------------------------------------------------------------------
-
 @dataclass
 class DecisionResult:
     """Outcome of the deterministic engine for one (user, product) pair."""
-    color: str                                  # GREEN | YELLOW | RED
+    color: str
     triggered_rules: List[str] = field(default_factory=list)
     confidence_downgrades: List[str] = field(default_factory=list)
     explanation: str = ""
 
 
-# ---------------------------------------------------------------------------
-# Decision Engine
-# ---------------------------------------------------------------------------
-
 class DecisionEngine:
     """
-    Stateless rule engine.  All thresholds are injected at init so that
-    the engine can be unit-tested without importing Config.
+    Pure-financial multi-condition labeling engine.
+
+    RED:    4 compound AND rules — each crosses at least 2 correlation groups
+            and includes a price_to_income_ratio escape so trivial purchases
+            never trigger RED.
+    YELLOW: 5 compound AND rules — each crosses at least 2 groups.
+            YELLOW triggers when >= 2 rules fire.
+    GREEN:  default when no RED fires and fewer than 2 YELLOW rules fire.
     """
 
-    def __init__(
-        self,
-        hard_stop: Optional[dict] = None,
-        caution: Optional[dict] = None,
-        confidence_downgrade: Optional[dict] = None,
-    ):
-        # Lazy-import Config only if caller didn't supply thresholds.
-        if hard_stop is None or caution is None or confidence_downgrade is None:
-            from config import Config
-            hard_stop = hard_stop or Config.HARD_STOP
-            caution = caution or Config.CAUTION
-            confidence_downgrade = confidence_downgrade or Config.CONFIDENCE_DOWNGRADE
-
-        self.hs = hard_stop
-        self.ct = caution
-        self.cd = confidence_downgrade
-
-    # ---------------------------------------------------------------------------
-    # Internal helpers
-    # ---------------------------------------------------------------------------
-
     @staticmethod
-    def _safe(val, default=None):
+    def _safe(val, default=0.0):
         """Return default if val is None or NaN."""
         if val is None:
             return default
@@ -85,227 +79,156 @@ class DecisionEngine:
             pass
         return val
 
-    def _in_range(self, val, lo, hi):
-        """Inclusive range check, NaN-safe."""
-        v = self._safe(val)
-        if v is None:
-            return False
-        return lo <= v <= hi
-
-    # ---------------------------------------------------------------------------
-    # Tier 1: Hard-stop safety checks → RED
-    # ---------------------------------------------------------------------------
-    # Any single hard-stop violation causes an immediate RED classification.
-    # These represent financial situations too risky to recommend a purchase.
-    # ---------------------------------------------------------------------------
-
-    def _check_hard_stops(self, fin: dict, prod: dict) -> List[str]:
-        """Return list of triggered hard-stop rule names."""
-        triggered = []
-        di = self._safe(fin.get("discretionary_income"))
-        dti = self._safe(fin.get("debt_to_income_ratio"))
-        meb = self._safe(fin.get("monthly_expense_burden_ratio"))
-        efm = self._safe(fin.get("emergency_fund_months"))
-        price = self._safe(prod.get("price"), 0)
-
-        # Rule 1: Negative discretionary income — user cannot cover basic expenses.
-        if di is not None and di < self.hs["discretionary_income_lt"]:
-            triggered.append("hard_stop:negative_discretionary_income")
-
-        # Rule 2: Debt-to-income ratio too high — over-leveraged.
-        if dti is not None and dti > self.hs["debt_to_income_ratio_gt"]:
-            triggered.append("hard_stop:high_debt_to_income")
-
-        # Rule 3: Expense burden ratio too high — expenses consume too much income.
-        if meb is not None and meb > self.hs["monthly_expense_burden_ratio_gt"]:
-            triggered.append("hard_stop:high_expense_burden")
-
-        # Rule 4: Emergency fund too thin — less than 1 month of runway.
-        if efm is not None and efm < self.hs["emergency_fund_months_lt"]:
-            triggered.append("hard_stop:low_emergency_fund")
-
-        # Rule 5 (compound): Product price exceeds discretionary income AND thin runway.
-        if (di is not None and efm is not None
-                and price > di
-                and efm < self.hs["price_exceeds_discretionary_emergency_lt"]):
-            triggered.append("hard_stop:price_exceeds_discretionary_thin_runway")
-
-        return triggered
-
-    # ---------------------------------------------------------------------------
-    # Tier 2: Caution checks → YELLOW candidate
-    # ---------------------------------------------------------------------------
-    # These represent borderline financial situations. Any single caution
-    # violation marks the scenario as YELLOW (proceed with caution).
-    # ---------------------------------------------------------------------------
-
-    def _check_caution(self, fin: dict, prod: dict) -> List[str]:
-        """Return list of triggered caution rule names."""
-        triggered = []
-
-        di = self._safe(fin.get("discretionary_income"))
-        dti = self._safe(fin.get("debt_to_income_ratio"))
-        meb = self._safe(fin.get("monthly_expense_burden_ratio"))
-        efm = self._safe(fin.get("emergency_fund_months"))
-        sti = self._safe(fin.get("saving_to_income_ratio"))
-
-        # Caution 1: Tight discretionary budget (0–1000).
-        lo, hi = self.ct["discretionary_income_range"]
-        if di is not None and lo <= di <= hi:
-            triggered.append("caution:tight_discretionary_income")
-
-        # Caution 2: Moderate debt load (0.20–0.40).
-        lo, hi = self.ct["debt_to_income_ratio_range"]
-        if dti is not None and lo <= dti <= hi:
-            triggered.append("caution:moderate_debt_to_income")
-
-        # Caution 3: Moderate expense burden (0.50–0.80).
-        lo, hi = self.ct["monthly_expense_burden_ratio_range"]
-        if meb is not None and lo <= meb <= hi:
-            triggered.append("caution:moderate_expense_burden")
-
-        # Caution 4: Thin emergency fund (1–3 months).
-        lo, hi = self.ct["emergency_fund_months_range"]
-        if efm is not None and lo <= efm <= hi:
-            triggered.append("caution:thin_emergency_fund")
-
-        # Caution 5: Low savings ratio (0.25–1.0).
-        lo, hi = self.ct["saving_to_income_ratio_range"]
-        if sti is not None and lo <= sti <= hi:
-            triggered.append("caution:low_savings_ratio")
-
-        return triggered
-
-    # ---------------------------------------------------------------------------
-    # Tier 3: Confidence downgrade — product signal quality
-    # ---------------------------------------------------------------------------
-    # These check the reliability of product review data. Weak product signals
-    # indicate we cannot trust the product quality assessment, so we downgrade
-    # the recommendation by one level: GREEN → YELLOW, YELLOW → RED.
-    # ---------------------------------------------------------------------------
-
-    def _check_confidence_downgrades(self, prod: dict) -> List[str]:
-        """Return list of triggered downgrade rule names."""
-        triggered = []
-        rn = self._safe(prod.get("rating_number"), 0)
-        rv = self._safe(prod.get("rating_variance"), 0)
-        ar = self._safe(prod.get("average_rating"), 0)
-
-        # Downgrade 1: Too few reviews — insufficient data for reliable signal.
-        if rn < self.cd["rating_number_lt"]:
-            triggered.append("downgrade:insufficient_reviews")
-
-        # Downgrade 2: Zero variance with few reviews — likely artificial/gamed ratings.
-        if rv == 0 and rn < self.cd["rating_variance_zero_count_lt"]:
-            triggered.append("downgrade:artificial_uniform_signal")
-
-        # Downgrade 3: High variance — polarized opinions indicate inconsistent quality.
-        if rv > self.cd["rating_variance_gt"]:
-            triggered.append("downgrade:polarized_ratings")
-
-        # Downgrade 4: Poor average rating — product itself has quality issues.
-        if ar <= self.cd["average_rating_lte"]:
-            triggered.append("downgrade:poor_average_rating")
-
-        return triggered
-
-    # ---------------------------------------------------------------------------
-    # Tier 4: Final color assignment
-    # ---------------------------------------------------------------------------
-    # Combines results from all tiers into a single decision.
-    # Conflicting signals always resolve to the MORE conservative label.
-    # ---------------------------------------------------------------------------
-
     def decide(self, financial: dict, product: dict) -> DecisionResult:
         """
-        Evaluate all tiers and return the final decision.
+        Core labeling logic.
+
+        Evaluates a user-product pair and returns GREEN / YELLOW / RED
+        with the rules that triggered the decision.
 
         Args:
-            financial: Dict with keys matching Config.FINANCIAL_FEATURES.
-            product:   Dict with keys matching Config.PRODUCT_FEATURES.
+            financial: Dict with per-pair computed features + per-entity DB features.
+            product:   Dict with product price (only price is used by the engine).
 
         Returns:
             DecisionResult with color, triggered rules, and explanation.
         """
-        # Edge case: all financial fields missing → default to YELLOW.
-        # We cannot assess safety without financial data, but RED is too harsh.
-        critical_fields = [
-            "discretionary_income", "debt_to_income_ratio",
-            "monthly_expense_burden_ratio", "emergency_fund_months",
-        ]
-        missing_fields = [f for f in critical_fields
-                          if self._safe(financial.get(f)) is None]
-        if len(missing_fields) == len(critical_fields):
-            return DecisionResult(
-                color="YELLOW",
-                triggered_rules=["edge_case:all_financial_fields_missing"],
-                explanation="All financial fields are missing — defaulting to YELLOW.",
-            )
+        # Pull all values with safe defaults.
+        # --- Per-pair computed features (from affordability_features.py) ---
+        affordability = self._safe(financial.get("affordability_score"))
+        pir = self._safe(financial.get("price_to_income_ratio"))
+        rus = self._safe(financial.get("residual_utility_score"))
+        spr = self._safe(financial.get("savings_to_price_ratio"))
+        nwi = self._safe(financial.get("net_worth_indicator"))
+        credit = self._safe(financial.get("credit_risk_indicator"), 0.5)
 
-        # Tier 1 — Hard-stop checks (any match → immediate RED).
-        hard_stops = self._check_hard_stops(financial, product)
-        if hard_stops:
-            return DecisionResult(
-                color="RED",
-                triggered_rules=hard_stops,
-                explanation=f"Hard-stop triggered: {', '.join(hard_stops)}",
-            )
+        # --- Per-entity DB features (from financial_features.py) ---
+        dti = self._safe(financial.get("debt_to_income_ratio"))
+        stir = self._safe(financial.get("saving_to_income_ratio"))
+        meb = self._safe(financial.get("monthly_expense_burden_ratio"))
+        efm = self._safe(financial.get("emergency_fund_months"))
 
-        # Tier 2 — Caution checks (any match → YELLOW base color).
-        caution_rules = self._check_caution(financial, product)
+        triggered = []
 
-        # Tier 3 — Confidence downgrades (each shifts color one level).
-        downgrades = self._check_confidence_downgrades(product)
+        # =================================================================
+        # RED: Purchase would cause financial harm.
+        # All conditions within each rule must be true (AND logic).
+        # Every rule crosses at least 2 independent groups and includes
+        # a PIR escape hatch so trivial purchases never trigger RED.
+        # =================================================================
 
-        # Determine base color from caution results.
-        if caution_rules:
-            base_color = "YELLOW"
-        else:
-            base_color = "GREEN"
+        # RED Rule 1 — Groups 1 + 2 + price awareness
+        # Income can't handle it AND savings can't absorb it AND
+        # purchase isn't trivial.
+        if (affordability < 0 and spr < 1.5
+                and rus < 1.0 and pir > 0.10):
+            triggered.append("red:cant_afford_from_any_angle")
+            return DecisionResult("RED", triggered,
+                explanation="Income can't handle it, savings barely cover "
+                            "the price, and the purchase is non-trivial.")
 
-        # Apply downgrades: each downgrade shifts one level.
-        #   GREEN → YELLOW, YELLOW → RED, RED stays RED.
-        final_color = base_color
-        for _ in downgrades:
-            if final_color == "GREEN":
-                final_color = "YELLOW"
-            elif final_color == "YELLOW":
-                final_color = "RED"
-            # RED stays RED — cannot downgrade past the worst label.
+        # RED Rule 2 — Groups 3 + 1 + 2
+        # Budget is maxed AND purchase is significant AND savings can't
+        # backstop.
+        if (meb > 0.80 and pir > 0.20
+                and efm < 3.0 and spr < 3.0):
+            triggered.append("red:maxed_budget_significant_purchase")
+            return DecisionResult("RED", triggered,
+                explanation="Budget over 80% consumed, product is 20%+ of "
+                            "income, thin emergency fund, and savings can't "
+                            "backstop.")
 
-        # Build human-readable explanation.
-        explanation_parts = []
-        if caution_rules:
-            explanation_parts.append(f"Caution: {', '.join(caution_rules)}")
-        if downgrades:
-            explanation_parts.append(f"Downgrades: {', '.join(downgrades)}")
-        if not caution_rules and not downgrades:
-            explanation_parts.append("All checks passed — GREEN.")
+        # RED Rule 3 — Groups 4 + 1 + 2
+        # Deeply underwater AND no surplus AND no safety cushion.
+        if (nwi < -2.0 and affordability < 0
+                and pir > 0.15 and efm < 3.0):
+            triggered.append("red:underwater_no_surplus_significant")
+            return DecisionResult("RED", triggered,
+                explanation="Net worth deeply negative, no surplus income, "
+                            "significant purchase, and thin emergency fund.")
 
-        return DecisionResult(
-            color=final_color,
-            triggered_rules=caution_rules,
-            confidence_downgrades=downgrades,
-            explanation=" | ".join(explanation_parts),
-        )
+        # RED Rule 4 — Groups 2 + 3 + price awareness
+        # No emergency runway AND purchase wipes remaining runway AND
+        # heavily indebted AND purchase isn't trivial.
+        if (efm < 1.0 and rus < 0.5
+                and dti > 0.30 and pir > 0.10):
+            triggered.append("red:paycheck_to_paycheck_wipes_net")
+            return DecisionResult("RED", triggered,
+                explanation="Less than 1 month emergency fund, purchase "
+                            "leaves <0.5 months runway, DTI over 30%, "
+                            "and purchase is non-trivial.")
 
-    # ---------------------------------------------------------------------------
-    # Convenience wrapper for DataFrame.apply()
-    # ---------------------------------------------------------------------------
+        # =================================================================
+        # YELLOW: Genuine concern — user should pause and think.
+        #
+        # 5 compound AND rules, each crossing at least 2 correlation groups.
+        # YELLOW triggers when >= 2 rules fire.
+        # =================================================================
+
+        yellow_count = 0
+        yellow_reasons = []
+
+        # YELLOW Rule 1 — Groups 1 + 2
+        # Income can't cover it AND purchase is a big portion of paycheck
+        # AND savings don't easily absorb it.
+        if affordability < 0 and pir > 0.25 and spr < 10.0:
+            yellow_count += 1
+            yellow_reasons.append("yellow:income_pressure")
+
+        # YELLOW Rule 2 — Groups 2 + 1
+        # Savings are thin for this purchase AND post-purchase runway is
+        # uncomfortable AND purchase is meaningful relative to income.
+        if spr < 5.0 and rus < 3.0 and pir > 0.10:
+            yellow_count += 1
+            yellow_reasons.append("yellow:savings_strain")
+
+        # YELLOW Rule 3 — Groups 3 + 2 + price awareness
+        # Heavy debt obligations AND thin emergency cushion AND
+        # purchase is meaningful.
+        if dti > 0.30 and efm < 4.0 and pir > 0.10:
+            yellow_count += 1
+            yellow_reasons.append("yellow:debt_stress")
+
+        # YELLOW Rule 4 — Groups 2 + 1
+        # Thin safety net AND low annual savings AND income can't
+        # cover the purchase.
+        if efm < 3.0 and stir < 0.25 and affordability < 0:
+            yellow_count += 1
+            yellow_reasons.append("yellow:low_resilience")
+
+        # YELLOW Rule 5 — Groups 4 + 1 + 2
+        # Weak credit AND poor net worth AND purchase is significant
+        # AND savings can't easily absorb.
+        if credit < 0.35 and nwi < 1.0 and pir > 0.15 and spr < 10.0:
+            yellow_count += 1
+            yellow_reasons.append("yellow:weak_profile")
+
+        # YELLOW fires when 2+ rules fire.
+        if yellow_count >= 2:
+            return DecisionResult("YELLOW", yellow_reasons, [],
+                explanation=f"{yellow_count} financial concern(s) triggered.")
+
+        # =================================================================
+        # GREEN: Purchase fits comfortably within the user's finances.
+        # No RED rules fired, and fewer than 2 YELLOW rules accumulated.
+        # =================================================================
+        return DecisionResult("GREEN", ["green:all_clear"], [],
+            explanation="Affordable purchase with healthy financial position.")
 
     def decide_row(self, row) -> str:
         """
-        Wrapper for pandas .apply(). Expects a row containing both financial
-        and product columns.
-
-        Args:
-            row: A pandas Series or dict-like with financial + product features.
-
-        Returns:
-            Label string: "GREEN", "YELLOW", or "RED".
+        Wrapper for pandas .apply(). Extracts financial and product
+        fields from a DataFrame row and returns the label string.
         """
         financial = {
-            "discretionary_income": row.get("discretionary_income"),
+            # Per-pair computed features.
+            "affordability_score": row.get("affordability_score"),
+            "price_to_income_ratio": row.get("price_to_income_ratio"),
+            "residual_utility_score": row.get("residual_utility_score"),
+            "savings_to_price_ratio": row.get("savings_to_price_ratio"),
+            "net_worth_indicator": row.get("net_worth_indicator"),
+            "credit_risk_indicator": row.get("credit_risk_indicator"),
+            # Per-entity DB features.
             "debt_to_income_ratio": row.get("debt_to_income_ratio"),
             "saving_to_income_ratio": row.get("saving_to_income_ratio"),
             "monthly_expense_burden_ratio": row.get("monthly_expense_burden_ratio"),
@@ -313,8 +236,5 @@ class DecisionEngine:
         }
         product = {
             "price": row.get("price", row.get("product_price")),
-            "average_rating": row.get("average_rating"),
-            "rating_number": row.get("rating_number"),
-            "rating_variance": row.get("rating_variance"),
         }
         return self.decide(financial, product).color

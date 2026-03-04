@@ -61,8 +61,13 @@ def handle_missing_values(df: pd.DataFrame) -> pd.DataFrame:
             else:
                 df[col] = df[col].fillna(df[col].median())
 
-    # Affordability metrics — fill with 0 (neutral default).
-    for col in ["affordability_score", "price_to_income_ratio", "residual_utility_score"]:
+    # Computed affordability features — fill with 0 (neutral default).
+    computed_features = [
+        # Financial features (6).
+        "affordability_score", "price_to_income_ratio", "residual_utility_score",
+        "savings_to_price_ratio", "net_worth_indicator", "credit_risk_indicator",
+    ]
+    for col in computed_features:
         if col in df.columns:
             df[col] = df[col].fillna(0.0)
 

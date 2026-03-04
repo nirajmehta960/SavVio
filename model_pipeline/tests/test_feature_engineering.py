@@ -88,6 +88,19 @@ class TestMissingValues:
         assert result["employment_status"].iloc[1] == "Unknown"
         assert result["region"].iloc[2] == "Unknown"
 
+    def test_computed_features_nulls_filled_with_zero(self):
+        """All 6 computed financial features should have NaN filled with 0.0."""
+        from features.engineering import handle_missing_values
+        computed_cols = [
+            "affordability_score", "price_to_income_ratio", "residual_utility_score",
+            "savings_to_price_ratio", "net_worth_indicator", "credit_risk_indicator",
+        ]
+        df = pd.DataFrame({col: [np.nan, 1.0, np.nan] for col in computed_cols})
+        result = handle_missing_values(df)
+        for col in computed_cols:
+            assert result[col].isnull().sum() == 0, f"NaN not filled in {col}"
+            assert result[col].iloc[0] == 0.0
+
 
 # ── Encoding tests ───────────────────────────────────────────────────────────
 
@@ -95,7 +108,6 @@ class TestEncoding:
 
     def test_ordinal_encoder_produces_numeric(self, tmp_path):
         from features.engineering import encode_categoricals
-        # Temporarily override MODEL_SAVE_DIR
         import config
         original = config.Config.MODEL_SAVE_DIR
         config.Config.MODEL_SAVE_DIR = str(tmp_path)
@@ -109,7 +121,7 @@ class TestEncoding:
         assert result["employment_status"].dtype in (np.float64, np.int64)
         assert result["region"].dtype in (np.float64, np.int64)
 
-        # Inference with saved encoder
+        # Verify inference with saved encoder produces same values.
         result2 = encode_categoricals(df, is_training=False)
         assert (result["employment_status"] == result2["employment_status"]).all()
 
@@ -134,7 +146,7 @@ class TestEncoding:
             "region": ["UNKNOWN_REGION"],
         })
         result = encode_categoricals(test_df, is_training=False)
-        assert result["employment_status"].iloc[0] == -1  # unknown_value
+        assert result["employment_status"].iloc[0] == -1
         assert result["region"].iloc[0] == -1
 
         config.Config.MODEL_SAVE_DIR = original
@@ -154,12 +166,14 @@ class TestScaling:
         df = pd.DataFrame({
             "discretionary_income": rng.uniform(-1000, 5000, 100),
             "price": rng.uniform(10, 1000, 100),
+            "savings_to_price_ratio": rng.uniform(0.1, 50, 100),
+            "credit_risk_indicator": rng.uniform(0, 1, 100),
         })
         result = scale_features(df, is_training=True)
 
-        for col in ["discretionary_income", "price"]:
+        for col in ["discretionary_income", "price", "savings_to_price_ratio"]:
             if col in result.columns:
-                assert abs(result[col].mean()) < 0.1  # near zero after scaling
+                assert abs(result[col].mean()) < 0.1
 
         config.Config.MODEL_SAVE_DIR = original
 
@@ -230,3 +244,35 @@ class TestBuildFeatureMatrix:
 
         config.Config.MODEL_SAVE_DIR = original
         config.Config.SCENARIO_OUTPUT_PATH = original_scenario
+
+    def test_computed_features_present_in_X(self, tmp_path):
+        """Verify all 6 computed financial features survive the pipeline into X."""
+        from features.engineering import build_feature_matrix
+        import config
+        original = config.Config.MODEL_SAVE_DIR
+        config.Config.MODEL_SAVE_DIR = str(tmp_path)
+        original_scenario = config.Config.SCENARIO_OUTPUT_PATH
+        config.Config.SCENARIO_OUTPUT_PATH = str(tmp_path / "scenarios.csv")
+
+        fin = _make_financial_df(50)
+        prod = _make_products_df(30)
+
+        X, _, _ = build_feature_matrix(
+            financial_df=fin, products_df=prod, n_scenarios=100
+        )
+
+        feature_cols = [
+            "affordability_score", "price_to_income_ratio",
+            "residual_utility_score", "savings_to_price_ratio",
+            "net_worth_indicator", "credit_risk_indicator",
+        ]
+        for col in feature_cols:
+            assert col in X.columns, f"Missing computed feature in X: {col}"
+
+        # Verify review features are NOT in X (engine is purely financial).
+        assert "review_confidence_score" not in X.columns
+        assert "review_polarization_index" not in X.columns
+
+        config.Config.MODEL_SAVE_DIR = original
+        config.Config.SCENARIO_OUTPUT_PATH = original_scenario
+

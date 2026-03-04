@@ -39,26 +39,33 @@ def main():
     mlflow.set_tracking_uri(Config.MLFLOW_TRACKING_URI)
     mlflow.set_experiment(Config.EXPERIMENT_NAME)
 
-    # 2. Data Loading
-    df = load_data()
-    y = define_target(df)
-    
-    # 3. Feature Engineering
-    X = preprocess_features(df, is_training=True)
+    # 2. Feature engineering + deterministic labeling (GREEN/YELLOW/RED).
+    # build_feature_matrix loads from DB, generates scenarios, labels them,
+    # handles missing values, encodes categoricals, and scales numerics.
+    X, y_raw, scenarios_raw = build_feature_matrix(is_training=True)
 
-    # Note: Extract sensitive features *before* dropping/encoding them for Fairlearn to use
-    sensitive_features = df[Config.SENSITIVE_FEATURES]
+    # 3. Encode string labels (GREEN/YELLOW/RED) into integers for model training.
+    label_encoder = LabelEncoder()
+    y = label_encoder.fit_transform(y_raw)
+    print(f"\nLabel Encoding: {dict(zip(label_encoder.classes_, label_encoder.transform(label_encoder.classes_)))}")
+    print(f"Label Distribution:\n{y_raw.value_counts().to_string()}\n")
 
-    # Split dataset into train/test with stratified sensitive features.
+    # Extract sensitive features from raw scenarios for Fairlearn bias detection.
+    sensitive_features = scenarios_raw[Config.SENSITIVE_FEATURES]
+
+    # Split dataset into train/test with stratified labels.
     X_train, X_test, y_train, y_test, sens_train, sens_test = train_test_split(
-        X, y, sensitive_features, test_size=0.2, random_state=42
+        X, y, sensitive_features,
+        test_size=0.2,
+        random_state=Config.RANDOM_STATE,
+        stratify=y,
     )
 
     # 4. Model Training Candidates (We will log a separate MLflow run for each)
     models_to_train = [
         {"name": "xgboost", "params": {"max_depth": 3, "learning_rate": 0.1, "n_estimators": 100}},
         {"name": "lightgbm", "params": {"max_depth": 3, "learning_rate": 0.1, "n_estimators": 100}},
-        {"name": "linearboost", "params": {"learning_rate": 0.1, "n_estimators": 100}}, # no max_depth for linear
+        {"name": "linearboost", "params": {"learning_rate": 0.1, "n_estimators": 100}},  # no max_depth for linear.
     ]
 
     best_run_id = None
@@ -79,6 +86,7 @@ def main():
             mlflow.log_params(params)
             mlflow.log_param("n_scenarios", Config.N_SCENARIOS)
             mlflow.log_param("label_type", "deterministic_engine_GYR")
+            mlflow.log_param("num_classes", len(label_encoder.classes_))
 
             # Train the Model
             model = train_model(model_type, X_train, y_train, params)
