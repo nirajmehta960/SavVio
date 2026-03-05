@@ -23,7 +23,7 @@ import logging
 import pandas as pd
 import shutil
 
-from src.utils import setup_logging, ensure_output_dir
+from src.features.utils import setup_logging, ensure_output_dir
 
 # Configure module logging.
 setup_logging()

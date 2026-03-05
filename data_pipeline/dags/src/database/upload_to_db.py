@@ -121,7 +121,7 @@ def _upsert_df(
     table_name: str,
     conflict_cols: list,
     update_cols: list,
-    chunksize: int = 100_000,
+    chunksize: int = 5_000,
 ) -> int:
     """
     Upsert a DataFrame into a PostgreSQL table.

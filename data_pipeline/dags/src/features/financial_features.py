@@ -13,7 +13,7 @@ import logging
 import pandas as pd
 import numpy as np
 
-from src.utils import setup_logging, ensure_output_dir
+from src.features.utils import setup_logging, ensure_output_dir
 from src.incremental import merge_csv
 
 # Configure module logging.
