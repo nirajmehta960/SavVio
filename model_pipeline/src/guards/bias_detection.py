@@ -1,14 +1,12 @@
-import numpy as np
 import pandas as pd
-from fairlearn.metrics import MetricFrame, demographic_parity_difference
+from fairlearn.metrics import MetricFrame, demographic_parity_difference, equalized_odds_difference
 from sklearn.metrics import accuracy_score
 import mlflow
 
 def evaluate_bias(y_test, y_pred, sensitive_features: pd.DataFrame):
     """
     Uses Fairlearn to detect bias in the model based on sensitive attributes
-    (e.g., region, employment_status). Logs unfairness metrics directly to MLflow.
-    Supports both binary and multi-class classification.
+    (e.g., gender, region). Logs unfairness metrics directly to MLflow.
     """
     print("\nRunning Bias & Fairness Detection...")
     
@@ -21,22 +19,16 @@ def evaluate_bias(y_test, y_pred, sensitive_features: pd.DataFrame):
         # Demographic Parity: Are predictions independent of the sensitive feature?
         dpd = demographic_parity_difference(y_test, y_pred, sensitive_features=sf_col)
         
-        # Per-group accuracy difference (works for any number of classes).
-        mf = MetricFrame(
-            metrics=accuracy_score,
-            y_true=y_test,
-            y_pred=y_pred,
-            sensitive_features=sf_col,
-        )
-        acc_diff = mf.difference()
+        # Equalized Odds: Do different groups have the same True Positive / False Positive Rates?
+        eod = equalized_odds_difference(y_test, y_pred, sensitive_features=sf_col)
         
         print(f"  Feature: {feature_name}")
         print(f"    - Demographic Parity Diff: {dpd:.4f} (Ideal: 0)")
-        print(f"    - Accuracy Diff (max-min): {acc_diff:.4f} (Ideal: 0)")
+        print(f"    - Equalized Odds Diff:     {eod:.4f} (Ideal: 0)")
         
-        # Record into MLflow with the feature name attached.
+        # Record into MLflow with the feature name attached
         fairness_metrics[f"bias_dpd_{feature_name}"] = dpd
-        fairness_metrics[f"bias_acc_diff_{feature_name}"] = acc_diff
+        fairness_metrics[f"bias_eod_{feature_name}"] = eod
         
     # Log it upstream
     mlflow.log_metrics(fairness_metrics)
