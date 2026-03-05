@@ -38,15 +38,11 @@ if os.getcwd() != str(pipeline_root):
     print(f"Changing working directory to: {pipeline_root}")
     os.chdir(pipeline_root)
 
-# Add 'src/validation' to python path to allow imports
-if str(validation_dir) not in sys.path:
-    sys.path.insert(0, str(validation_dir))
-
 from savviocore.validation.validation_config import ValidationReport
-from validate.raw_validator import run_raw_validation
-from validate.processed_validator import run_processed_validation
+from src.validation.validate.raw_validator import run_raw_validation
+from src.validation.validate.processed_validator import run_processed_validation
 from savviocore.validation.feature_validator import run_feature_validation
-from anomaly.anomaly_validator import run_anomaly_validation, run_raw_anomaly_validation
+from src.validation.anomaly.anomaly_validator import run_anomaly_validation, run_raw_anomaly_validation
 
 logger = logging.getLogger(__name__)
 

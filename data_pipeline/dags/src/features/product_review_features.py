@@ -19,14 +19,11 @@ Output: data/features/product_featured.jsonl
 """
 
 import os
-import sys
 import logging
 import pandas as pd
 import shutil
 
-sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
-
-from utils import setup_logging, ensure_output_dir
+from src.utils import setup_logging, ensure_output_dir
 
 # Configure module logging.
 setup_logging()

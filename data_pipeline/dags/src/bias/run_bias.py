@@ -15,13 +15,10 @@ import os
 import logging
 import argparse
 
-# Add current script directory to import path.
-sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
-
-from financial_bias import run_financial_bias
-from product_bias import run_product_bias
-from review_bias import run_review_bias
-from utils import setup_logging, get_processed_path, get_features_path
+from src.bias.financial_bias import run_financial_bias
+from src.bias.product_bias import run_product_bias
+from src.bias.review_bias import run_review_bias
+from src.utils import setup_logging, get_processed_path, get_features_path
 
 # Configure module logging.
 setup_logging()
