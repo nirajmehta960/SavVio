@@ -125,3 +125,7 @@ data_pipeline/config/
 
 # temp_data
 */temp_data/*
+
+# Configs and Artifacts
+config/
+model_pipeline/artifacts/
