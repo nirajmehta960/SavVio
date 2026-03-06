@@ -15,8 +15,8 @@ import logging
 import pandas as pd
 from sqlalchemy import text
 
-from src.database.db_connection import get_engine
-from src.database.db_schema import create_tables
+from savviocore.database.db_connection import get_engine
+from savviocore.database.db_schema import create_tables
 
 logger = logging.getLogger(__name__)
 
@@ -115,62 +115,73 @@ def _select_and_rename(df: pd.DataFrame, col_map: dict) -> pd.DataFrame:
     return df[list(available.keys())].rename(columns=available)
 
 
+import io
+
 def _upsert_df(
     engine,
     df: pd.DataFrame,
     table_name: str,
     conflict_cols: list,
     update_cols: list,
-    chunksize: int = 100_000,
+    copy_chunk: int = 200_000,
 ) -> int:
     """
-    Upsert a DataFrame into a PostgreSQL table.
+    Upsert a DataFrame into a PostgreSQL table using COPY + staging table.
 
-    Uses INSERT ... ON CONFLICT (conflict_cols) DO UPDATE SET ...
-    to insert new rows and update existing ones. No data is deleted.
-
-    Args:
-        engine:        SQLAlchemy engine.
-        df:            DataFrame to upsert.
-        table_name:    Target table name.
-        conflict_cols: Column(s) forming the unique constraint.
-        update_cols:   Column(s) to update on conflict.
-        chunksize:     Number of rows per batch.
-
-    Returns:
-        Number of rows processed.
+    1. COPY data in chunks into a temp staging table (avoids OOM).
+    2. Single INSERT ... ON CONFLICT from staging → real table (server-side).
+    3. Drop the staging table.
     """
     if df.empty:
         logger.info("Empty DataFrame — nothing to upsert into %s", table_name)
         return 0
 
-    # Build the column lists for the INSERT.
     all_cols = list(df.columns)
     col_list = ", ".join(all_cols)
-    val_placeholders = ", ".join(f":{c}" for c in all_cols)
     conflict_list = ", ".join(conflict_cols)
-    update_set = ", ".join(
-        f"{c} = EXCLUDED.{c}" for c in update_cols
-    )
-    # Also update the updated_at timestamp on conflict.
+    update_set = ", ".join(f"{c} = EXCLUDED.{c}" for c in update_cols)
     update_set += ", updated_at = CURRENT_TIMESTAMP"
 
-    sql = text(
-        f"INSERT INTO {table_name} ({col_list}) "
-        f"VALUES ({val_placeholders}) "
-        f"ON CONFLICT ({conflict_list}) DO UPDATE SET {update_set}"
-    )
+    staging = f"_staging_{table_name}"
+    n = len(df)
 
-    rows_processed = 0
-    with engine.begin() as conn:
-        for start in range(0, len(df), chunksize):
-            chunk = df.iloc[start : start + chunksize]
-            records = chunk.to_dict(orient="records")
-            conn.execute(sql, records)
-            rows_processed += len(records)
+    raw_conn = engine.raw_connection()
+    try:
+        cur = raw_conn.cursor()
 
-    logger.info("Upserted %d rows into %s", rows_processed, table_name)
-    return rows_processed
+        # 1. Create temp staging table (no constraints / indexes)
+        cur.execute(f"DROP TABLE IF EXISTS {staging}")
+        cur.execute(f"CREATE TEMP TABLE {staging} (LIKE {table_name} INCLUDING DEFAULTS)")
+
+        # 2. COPY in chunks to avoid holding full CSV buffer in memory
+        for start in range(0, n, copy_chunk):
+            chunk = df.iloc[start : start + copy_chunk]
+            buf = io.StringIO()
+            chunk.to_csv(buf, index=False, header=False, sep='\t', na_rep='\\N')
+            buf.seek(0)
+            cur.copy_expert(
+                f"COPY {staging} ({col_list}) FROM STDIN WITH (FORMAT csv, DELIMITER E'\\t', NULL '\\\\N')",
+                buf,
+            )
+            logger.info("COPY'd chunk %d–%d into staging for %s", start, min(start + copy_chunk, n), table_name)
+
+        # 3. Merge staging → real table in a single server-side SQL statement
+        cur.execute(
+            f"INSERT INTO {table_name} ({col_list}) "
+            f"SELECT {col_list} FROM {staging} "
+            f"ON CONFLICT ({conflict_list}) DO UPDATE SET {update_set}"
+        )
+
+        cur.execute(f"DROP TABLE IF EXISTS {staging}")
+        raw_conn.commit()
+    except Exception:
+        raw_conn.rollback()
+        raise
+    finally:
+        raw_conn.close()
+
+    logger.info("Upserted %d rows into %s", n, table_name)
+    return n
 
 
 def _ensure_jsonb(df: pd.DataFrame, col: str) -> pd.DataFrame:

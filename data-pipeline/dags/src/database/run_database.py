@@ -7,15 +7,12 @@ PythonOperator can call them with a consistent *_task(**context) interface.
 
 import os
 import logging
-import sys
 
-# Add current script directory to import path (mirrors run_features.py pattern).
-sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 
-from upload_to_db import load_financial, load_products, load_reviews, load_all
-from db_connection import get_engine, ensure_pgvector
-from db_schema import create_tables
-from vector_embed import (
+from src.database.upload_to_db import load_financial, load_products, load_reviews, load_all
+from savviocore.database.db_connection import get_engine, ensure_pgvector
+from savviocore.database.db_schema import create_tables
+from src.database.vector_embed import (
     load_model,
     embed_products,
     embed_reviews,
@@ -48,7 +45,7 @@ def setup_database_task(**context):
     """Airflow task: create PostgreSQL tables if they don't already exist."""
     logger.info(">>> Setting up database schema (create if not exists)...")
     engine = get_engine()
-    from db_schema import create_tables
+    from savviocore.database.db_schema import create_tables
     create_tables(engine)
     logger.info(">>> Database Setup: SUCCESS")
 
