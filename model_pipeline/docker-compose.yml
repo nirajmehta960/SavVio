@@ -154,6 +154,7 @@ services:
       - ./model:/app/model
       - ../data_pipeline/dags/data:/app/data
       - ../savviocore:/app/savviocore
+      - ./pyproject.toml:/app/pyproject.toml
     environment:
       MLFLOW_TRACKING_URI: http://mlflow-server:${MLFLOW_PORT}
     ports:

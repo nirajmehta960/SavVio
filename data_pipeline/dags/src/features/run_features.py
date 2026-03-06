@@ -9,17 +9,13 @@ Usage:
     python3 src/features/run_features.py
 """
 
-import sys
 import os
 import logging
 import argparse
 
-# Add current script directory to import path.
-sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
-
-from financial_features import run_financial_features
-from product_review_features import run_review_features
-from utils import setup_logging
+from src.features.financial_features import run_financial_features
+from src.features.product_review_features import run_review_features
+from src.utils import setup_logging
 
 # Configure module logging.
 setup_logging()

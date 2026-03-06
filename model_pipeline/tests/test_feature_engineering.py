@@ -5,13 +5,9 @@ Tests missing-value handling, encoding, scaling, and build_feature_matrix().
 Uses synthetic data so tests run without a live PostgreSQL connection.
 """
 
-import sys
-import os
 import pytest
 import numpy as np
 import pandas as pd
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 
 # ── Synthetic data helpers ───────────────────────────────────────────────────

@@ -9,7 +9,7 @@
 # --------------------------------------------------------------
 # Option 1: CPU-only (Default — lightweight, fast builds)
 # --------------------------------------------------------------
-FROM python:3.10-slim
+FROM python:3.11-slim
 
 # --------------------------------------------------------------
 # Option 2: GPU/CUDA (Uncomment below AND comment out Option 1)
@@ -30,5 +30,8 @@ COPY model-requirements.txt .
 RUN pip install --upgrade pip && \
     pip install -r model-requirements.txt
 
-# Install savviocore in editable mode (mounted via compose)
-CMD pip install -e /app/savviocore && tail -f /dev/null
+# Copy pyproject.toml so pip recognizes this as a package
+COPY pyproject.toml .
+
+# Install savviocore as a dependency, then install this package in editable mode
+CMD pip install -e /app/savviocore && pip install -e /app && tail -f /dev/null

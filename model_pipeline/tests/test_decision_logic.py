@@ -7,12 +7,8 @@ Tests the cross-group compound AND labeling rules:
   GREEN  — default when no RED fires and < 2 YELLOW rules fire
 """
 
-import sys
-import os
 import pytest
 import pandas as pd
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from deterministic_engine.decision_logic import DecisionEngine, DecisionResult
 
