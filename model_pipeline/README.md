@@ -12,12 +12,22 @@ SavVio/
     ├── Dockerfile                  # GPU-enabled base image
     ├── docker-compose.yml          # Unified MLflow + ML-Dev orchestration
     ├── model-requirements.txt
+    ├── models/                    # Local dev model storage (gitignored)
+    │   ├── checkpoints/           # Intermediate training checkpoints
+    │   ├── artifacts/             # Final model artifacts (pkl/joblib)
+    │   └── preprocessing/        # Encoder + scaler artifacts
     ├── src/
     │   ├── run_pipeline.py         # Entrypoint to run the whole ML pipeline end-to-end
-    │   ├── config.py               # Defines MLflow URIs, Hyperparameters, File paths
-    │   ├── data_loader.py          # Reads from temp_data or Airflow DB
+    │   ├── config.py   
+    │   ├── data/
+    │   │   └── data_loader.py      # Reads from Postgres DB
+    │   │   └── validate_data.py    # Validates data from Postgres DB
     │   ├── features/
-    │   │   └── engineering.py      # OrdinalEncoding, Scaling, Target definitions
+    │   │   └── feature_engineering.py      # OrdinalEncoding, Scaling, Target definitions
+    │   │   └── affordability_features.py   # Affordability features
+    │   │   └── training_data_generator.py      # Training data
+    │   │── deterministic_engine/      # Deterministic engine
+    │   │   └── decision_engine.py      # Decision engine
     │   ├── core_models/
     │   │   ├── train.py            # Logic to train XGBoost, LightGBM, LinearBoost
     │   │   └── evaluate.py         # Accuracy, F1, ROC-AUC calculations
