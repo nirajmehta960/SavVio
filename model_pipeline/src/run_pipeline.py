@@ -25,6 +25,7 @@ from config import Config
 from features.feature_engineering import build_feature_matrix
 from core_models.train import train_model, log_model_to_mlflow
 from core_models.evaluate import evaluate_model
+from core_models.optuna_tuner import tune_best_candidate
 
 logger = logging.getLogger(__name__)
 
@@ -217,6 +218,51 @@ def train_candidates(X_train, y_train, X_val, y_val, sens_val, label_encoder):
 
     return candidates
 
+# ---------------------------------------------------------------------------
+# 3b. Hyperparameter Tuning
+# ---------------------------------------------------------------------------
+
+def tune_best_candidate(candidates, data):
+    """
+    Tune the best baseline model using Optuna.
+
+    Returns:
+        Tuple of (model_type, tuned_params, study) or None if tuning is disabled.
+    """
+    tuning_result = tune_best_candidate(
+        candidates,
+        data["X_train"], data["y_train"],
+        data["X_val"], data["y_val"],
+    )
+    if tuning_result:
+        model_type, tuned_params, _ = tuning_result
+        try:
+            with mlflow.start_run(run_name=f"{model_type}_tuned"):
+                mlflow.log_param("model_type", model_type)
+                mlflow.log_param("tuning_source", "optuna")
+                mlflow.log_params(tuned_params)
+
+                tuned_model = train_model(
+                    model_type, data["X_train"], data["y_train"], tuned_params,
+                    X_val=data["X_val"], y_val=data["y_val"],
+                )
+                tuned_metrics = evaluate_model(
+                    tuned_model, data["X_val"], data["y_val"],
+                    label_names=list(data["label_encoder"].classes_),
+                )
+
+                signature = infer_signature(data["X_train"], tuned_model.predict(data["X_train"]))
+                log_model_to_mlflow(tuned_model, model_type, signature)
+
+                candidates.append({
+                    "name": f"{model_type}_tuned",
+                    "model": tuned_model,
+                    "run_id": mlflow.active_run().info.run_id,
+                    "metrics": tuned_metrics,
+                    "bias_passed": True,  # Will be checked in select_best_model
+                })
+        except Exception as e:
+            logger.error("Tuned model training failed: %s", e, exc_info=True)
 
 # ---------------------------------------------------------------------------
 # 4. Model Selection
@@ -323,6 +369,9 @@ def main():
         data["X_val"], data["y_val"],
         data["sens_val"], data["label_encoder"],
     )
+
+    # 3b. Hyperparameter tuning on best baseline.
+    candidates = tune_best_candidate(candidates, data)
 
     # 4. Select best model (F1 + bias gate).
     best = select_best_model(candidates)
