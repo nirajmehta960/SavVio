@@ -1,5 +1,5 @@
 """
-Model Pipeline — End-to-End Entrypoint (v2).
+Model Pipeline — End-to-End Entrypoint.
 
 Orchestrates the full model training flow:
     1. Initialization   — Seeds, MLflow config.
