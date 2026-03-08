@@ -24,6 +24,10 @@ class Config:
     MLFLOW_TRACKING_URI = os.getenv("MLFLOW_TRACKING_URI", "http://mlflow-server:5000")
     EXPERIMENT_NAME = "Financial_Wellbeing_Prediction"
 
+    # GCP (Production)
+    GCP_PROJECT_ID = os.getenv("GCP_PROJECT_ID", "savvio-project")
+    GCP_REGION = os.getenv("GCP_REGION", "us-central1")
+    ARTIFACT_REGISTRY_REPO = "savvio-model-repo"
     # ---------------------------------------------------------------------------
     # Feature Lists (used by engineering.py for imputation, scaling, encoding)
     # ---------------------------------------------------------------------------

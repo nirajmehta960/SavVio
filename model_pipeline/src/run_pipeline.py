@@ -222,13 +222,8 @@ def train_candidates(X_train, y_train, X_val, y_val, sens_val, label_encoder):
 # 3b. Hyperparameter Tuning
 # ---------------------------------------------------------------------------
 
-def tune_best_candidate(candidates, data):
-    """
-    Tune the best baseline model using Optuna.
-
-    Returns:
-        Tuple of (model_type, tuned_params, study) or None if tuning is disabled.
-    """
+def tune_candidate(candidates, data):
+    # 3b. Hyperparameter tuning on best baseline.
     tuning_result = tune_best_candidate(
         candidates,
         data["X_train"], data["y_train"],
@@ -263,6 +258,8 @@ def tune_best_candidate(candidates, data):
                 })
         except Exception as e:
             logger.error("Tuned model training failed: %s", e, exc_info=True)
+            
+    return candidates
 
 # ---------------------------------------------------------------------------
 # 4. Model Selection
@@ -321,8 +318,8 @@ def final_evaluation(best, X_test, y_test, label_encoder):
         logger.info("Final test metrics: %s", metrics)
 
         # ── Model registration placeholder ──
-        # model_uri = f"runs:/{best['run_id']}/model"
-        # mlflow.register_model(model_uri, Config.REGISTERED_MODEL_NAME)
+        model_uri = f"runs:/{best['run_id']}/model"
+        mlflow.register_model(model_uri, Config.REGISTERED_MODEL_NAME)
 
     return metrics
 
@@ -371,7 +368,7 @@ def main():
     )
 
     # 3b. Hyperparameter tuning on best baseline.
-    candidates = tune_best_candidate(candidates, data)
+    candidates = tune_candidate(candidates, data)
 
     # 4. Select best model (F1 + bias gate).
     best = select_best_model(candidates)
