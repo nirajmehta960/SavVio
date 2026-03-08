@@ -129,3 +129,6 @@ data_pipeline/config/
 # Configs and Artifacts
 config/
 model_pipeline/artifacts/
+
+# Jupyter Notebooks
+model_pipeline/experiments/
