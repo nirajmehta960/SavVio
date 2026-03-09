@@ -45,6 +45,7 @@ from typing import List, Optional
 
 logger = logging.getLogger(__name__)
 
+# TODO how is data coming here?
 
 @dataclass
 class DecisionResult:
