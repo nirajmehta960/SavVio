@@ -147,6 +147,9 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: savvio-ml-trainer
+    depends_on:
+      mlflow:
+        condition: service_healthy
     tty: true
     stdin_open: true
     volumes:

@@ -15,14 +15,14 @@ class Config:
     # Paths
     # ---------------------------------------------------------------------------
     BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    MODEL_SAVE_DIR = os.path.join(BASE_DIR, "artifacts")
-    SCENARIO_OUTPUT_PATH = os.path.join(BASE_DIR, "artifacts", "training_scenarios.csv")
+    MODEL_SAVE_DIR = os.path.join(BASE_DIR, "models")
+    SCENARIO_OUTPUT_PATH = os.path.join(BASE_DIR, "models", "training_scenarios.csv")
 
     # ---------------------------------------------------------------------------
     # MLflow Configuration
     # ---------------------------------------------------------------------------
-    MLFLOW_TRACKING_URI = os.getenv("MLFLOW_TRACKING_URI", "http://mlflow-server:5000")
-    EXPERIMENT_NAME = "Financial_Wellbeing_Prediction"
+    MLFLOW_TRACKING_URI = os.getenv("MLFLOW_TRACKING_URI", "http://mlflow-server:${MLFLOW_PORT}")
+    EXPERIMENT_NAME = "SavVio_Prediction"
 
     # GCP (Production)
     GCP_PROJECT_ID = os.getenv("GCP_PROJECT_ID", "savvio-project")
