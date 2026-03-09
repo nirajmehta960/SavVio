@@ -154,7 +154,7 @@ services:
     stdin_open: true
     volumes:
       - ./src:/app/src
-      - ./model:/app/model
+      - ./models:/app/models
       - ../data_pipeline/dags/data:/app/data
       - ../savviocore:/app/savviocore
       - ./pyproject.toml:/app/pyproject.toml

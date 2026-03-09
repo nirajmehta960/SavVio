@@ -21,7 +21,7 @@ class Config:
     # ---------------------------------------------------------------------------
     # MLflow Configuration
     # ---------------------------------------------------------------------------
-    MLFLOW_TRACKING_URI = os.getenv("MLFLOW_TRACKING_URI", "http://mlflow-server:${MLFLOW_PORT}")
+    MLFLOW_TRACKING_URI = os.getenv("MLFLOW_TRACKING_URI", "http://mlflow-server:5000")
     EXPERIMENT_NAME = "SavVio_Prediction"
 
     # GCP (Production)
