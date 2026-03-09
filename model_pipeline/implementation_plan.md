@@ -74,7 +74,7 @@
 
 | # | Task | Effort |
 |---|------|--------|
-| 6 | SHAP / LIME explainability — add to `final_evaluation()` in `run_pipeline.py` | 2–3 hours |
+| 6 | SHAP / LIME explainability — add to `final_evaluation()` in `run_pipeline.py` | 12–13 hours |
 | 7 | Model registry push — `mlflow.register_model()` + GCP Artifact Registry upload script | 2 hours |
 | 8 | CI/CD GitHub Actions — test → train → validate gate → bias gate → registry push | 3–4 hours |
 | 9 | Finish LLM wrapper | In progress |

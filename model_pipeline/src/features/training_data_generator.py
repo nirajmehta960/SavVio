@@ -37,9 +37,10 @@ logger = logging.getLogger(__name__)
 INCOME_BINS: List[float] = [0, 3_000, 7_000, float("inf")]
 INCOME_LABELS: List[str] = ["low", "mid", "high"]
 
+# TODO price bin start at 50 or?
+
 PRICE_BINS: List[float] = [0, 25, 200, float("inf")]
 PRICE_LABELS: List[str] = ["budget", "mid", "premium"]
-
 
 # ---------------------------------------------------------------------------
 # Sampling strategies

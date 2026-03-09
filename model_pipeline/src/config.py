@@ -15,15 +15,19 @@ class Config:
     # Paths
     # ---------------------------------------------------------------------------
     BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    MODEL_SAVE_DIR = os.path.join(BASE_DIR, "artifacts")
-    SCENARIO_OUTPUT_PATH = os.path.join(BASE_DIR, "artifacts", "training_scenarios.csv")
+    MODEL_SAVE_DIR = os.path.join(BASE_DIR, "models")
+    SCENARIO_OUTPUT_PATH = os.path.join(BASE_DIR, "models", "training_scenarios.csv")
 
     # ---------------------------------------------------------------------------
     # MLflow Configuration
     # ---------------------------------------------------------------------------
     MLFLOW_TRACKING_URI = os.getenv("MLFLOW_TRACKING_URI", "http://mlflow-server:5000")
-    EXPERIMENT_NAME = "Financial_Wellbeing_Prediction"
+    EXPERIMENT_NAME = "SavVio_Prediction"
 
+    # GCP (Production)
+    GCP_PROJECT_ID = os.getenv("GCP_PROJECT_ID", "savvio-purchase-guardrail")
+    GCP_REGION = os.getenv("GCP_REGION", "us-east1")
+    ARTIFACT_REGISTRY_REPO = "savvio-model-repo"
     # ---------------------------------------------------------------------------
     # Feature Lists (used by engineering.py for imputation, scaling, encoding)
     # ---------------------------------------------------------------------------
@@ -80,3 +84,22 @@ class Config:
     # ---------------------------------------------------------------------------
     N_SCENARIOS = 50_000
     RANDOM_STATE = 42
+
+    # ---------------------------------------------------------------------------
+    # Hyperparameter Tuning
+    # ---------------------------------------------------------------------------
+    TUNING_BACKEND = "optuna"           # "optuna" or "none" to skip
+    N_TUNING_TRIALS = 50
+    TUNING_TIMEOUT_SECONDS = 600
+
+    # ---------------------------------------------------------------------------
+    # Model Registry
+    # ---------------------------------------------------------------------------
+    REGISTERED_MODEL_NAME = "SavVio_Purchase_Guardrail"
+
+    # ---------------------------------------------------------------------------
+    # Validation Gates
+    # ---------------------------------------------------------------------------
+    MIN_F1_THRESHOLD = 0.70
+    MIN_AUC_THRESHOLD = 0.75
+    BIAS_DISPARITY_THRESHOLD = 0.10
