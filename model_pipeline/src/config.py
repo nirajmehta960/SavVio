@@ -25,8 +25,8 @@ class Config:
     EXPERIMENT_NAME = "SavVio_Prediction"
 
     # GCP (Production)
-    GCP_PROJECT_ID = os.getenv("GCP_PROJECT_ID", "savvio-project")
-    GCP_REGION = os.getenv("GCP_REGION", "us-central1")
+    GCP_PROJECT_ID = os.getenv("GCP_PROJECT_ID", "savvio-purchase-guardrail")
+    GCP_REGION = os.getenv("GCP_REGION", "us-east1")
     ARTIFACT_REGISTRY_REPO = "savvio-model-repo"
     # ---------------------------------------------------------------------------
     # Feature Lists (used by engineering.py for imputation, scaling, encoding)
