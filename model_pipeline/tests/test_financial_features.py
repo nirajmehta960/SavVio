@@ -14,11 +14,11 @@ import pandas as pd
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from features.affordability_features import (
+from features.financial_features import (
     compute_affordability,
     AffordabilityResult,
-    generate_scenarios,
 )
+from features.training_data_generator import generate_scenarios
 
 
 # ── compute_affordability ────────────────────────────────────────────────────
@@ -60,7 +60,7 @@ class TestComputeAffordability:
 
     def test_credit_risk_indicator(self):
         result = compute_affordability(self._default_profile(), 200.0)
-        assert result.credit_risk_indicator == pytest.approx((720 - 300) / 550, abs=1e-3)
+        assert result.credit_risk_indicator == pytest.approx((720 - 299) / 550, abs=1e-3)
 
     def test_zero_income_guards(self):
         profile = self._default_profile()

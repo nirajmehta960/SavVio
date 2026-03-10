@@ -39,6 +39,18 @@ def _make_financial_df(n=50):
     })
 
 
+def _make_reviews_df(n=100):
+    rng = np.random.default_rng(77)
+    return pd.DataFrame({
+        "review_id": [f"R{i}" for i in range(n)],
+        "product_id": [f"P{rng.integers(0, 30)}" for i in range(n)],
+        "user_id": [f"U{rng.integers(0, 50)}" for i in range(n)],
+        "rating": rng.integers(1, 6, n),
+        "review_text": ["This is a test review"] * n,
+        "verified_purchase": rng.choice([True, False], n),
+        "helpful_vote": rng.integers(0, 100, n),
+    })
+
 def _make_products_df(n=30):
     rng = np.random.default_rng(99)
     return pd.DataFrame({
@@ -60,46 +72,46 @@ def _make_products_df(n=30):
 class TestMissingValues:
 
     def test_financial_nulls_filled(self):
-        from features.engineering import handle_missing_values
+        from features.feature_engineering import MissingValueImputer
         df = _make_financial_df(20)
         df.loc[0, "discretionary_income"] = np.nan
         df.loc[1, "debt_to_income_ratio"] = np.nan
-        result = handle_missing_values(df)
+        result = MissingValueImputer().transform(df)
         assert result["discretionary_income"].isnull().sum() == 0
         assert result["debt_to_income_ratio"].isnull().sum() == 0
 
     def test_product_variance_null_filled_with_zero(self):
-        from features.engineering import handle_missing_values
+        from features.feature_engineering import MissingValueImputer
         df = pd.DataFrame({
             "rating_variance": [1.0, np.nan, 0.5],
             "price": [10, 20, 30],
         })
-        result = handle_missing_values(df)
+        result = MissingValueImputer().transform(df)
         assert result["rating_variance"].iloc[1] == 0.0
 
     def test_categorical_nulls_filled_with_unknown(self):
-        from features.engineering import handle_missing_values
+        from features.feature_engineering import MissingValueImputer
         df = pd.DataFrame({
             "employment_status": ["employed", None, "self-employed"],
             "has_loan": [True, None, False],
             "region": ["east", "west", None],
         })
-        result = handle_missing_values(df)
+        result = MissingValueImputer().transform(df)
         assert result["employment_status"].iloc[1] == "Unknown"
         assert result["region"].iloc[2] == "Unknown"
 
-    def test_computed_features_nulls_filled_with_zero(self):
-        """All 6 computed financial features should have NaN filled with 0.0."""
-        from features.engineering import handle_missing_values
+    def test_computed_features_nulls_filled_with_median(self):
+        """All 6 computed financial features should have NaN filled with median."""
+        from features.feature_engineering import MissingValueImputer
         computed_cols = [
             "affordability_score", "price_to_income_ratio", "residual_utility_score",
             "savings_to_price_ratio", "net_worth_indicator", "credit_risk_indicator",
         ]
-        df = pd.DataFrame({col: [np.nan, 1.0, np.nan] for col in computed_cols})
-        result = handle_missing_values(df)
+        df = pd.DataFrame({col: [np.nan, 1.0, 3.0] for col in computed_cols})
+        result = MissingValueImputer().transform(df)
         for col in computed_cols:
             assert result[col].isnull().sum() == 0, f"NaN not filled in {col}"
-            assert result[col].iloc[0] == 0.0
+            assert result[col].iloc[0] == pytest.approx(2.0), f"Expected median 2.0 for {col}"
 
 
 # ── Encoding tests ───────────────────────────────────────────────────────────
@@ -107,49 +119,40 @@ class TestMissingValues:
 class TestEncoding:
 
     def test_ordinal_encoder_produces_numeric(self, tmp_path):
-        from features.engineering import encode_categoricals
-        import config
-        original = config.Config.MODEL_SAVE_DIR
-        config.Config.MODEL_SAVE_DIR = str(tmp_path)
-
+        from features.feature_engineering import CategoricalEncoder
+        
         df = pd.DataFrame({
             "employment_status": ["employed", "self-employed", "unemployed"],
             "has_loan": [True, False, True],
             "region": ["east", "west", "south"],
         })
-        result = encode_categoricals(df, is_training=True)
+        encoder = CategoricalEncoder()
+        result = encoder.fit_transform(df)
         assert result["employment_status"].dtype in (np.float64, np.int64)
         assert result["region"].dtype in (np.float64, np.int64)
 
-        # Verify inference with saved encoder produces same values.
-        result2 = encode_categoricals(df, is_training=False)
+        # Verify inference with same encoder produces same values.
+        result2 = encoder.transform(df)
         assert (result["employment_status"] == result2["employment_status"]).all()
 
-        config.Config.MODEL_SAVE_DIR = original
-
-    def test_unknown_category_at_inference(self, tmp_path):
-        from features.engineering import encode_categoricals
-        import config
-        original = config.Config.MODEL_SAVE_DIR
-        config.Config.MODEL_SAVE_DIR = str(tmp_path)
-
+    def test_unknown_category_at_inference(self):
+        from features.feature_engineering import CategoricalEncoder
         train_df = pd.DataFrame({
             "employment_status": ["employed", "self-employed"],
             "has_loan": [True, False],
             "region": ["east", "west"],
         })
-        encode_categoricals(train_df, is_training=True)
+        encoder = CategoricalEncoder()
+        encoder.fit(train_df)
 
         test_df = pd.DataFrame({
             "employment_status": ["NEVER_SEEN_BEFORE"],
             "has_loan": [True],
             "region": ["UNKNOWN_REGION"],
         })
-        result = encode_categoricals(test_df, is_training=False)
+        result = encoder.transform(test_df)
         assert result["employment_status"].iloc[0] == -1
         assert result["region"].iloc[0] == -1
-
-        config.Config.MODEL_SAVE_DIR = original
 
 
 # ── Scaling tests ────────────────────────────────────────────────────────────
@@ -157,11 +160,7 @@ class TestEncoding:
 class TestScaling:
 
     def test_scaled_features_near_zero_mean(self, tmp_path):
-        from features.engineering import scale_features
-        import config
-        original = config.Config.MODEL_SAVE_DIR
-        config.Config.MODEL_SAVE_DIR = str(tmp_path)
-
+        from features.feature_engineering import NumericScaler
         rng = np.random.default_rng(42)
         df = pd.DataFrame({
             "discretionary_income": rng.uniform(-1000, 5000, 100),
@@ -169,13 +168,12 @@ class TestScaling:
             "savings_to_price_ratio": rng.uniform(0.1, 50, 100),
             "credit_risk_indicator": rng.uniform(0, 1, 100),
         })
-        result = scale_features(df, is_training=True)
+        scaler = NumericScaler()
+        result = scaler.fit_transform(df)
 
         for col in ["discretionary_income", "price", "savings_to_price_ratio"]:
             if col in result.columns:
                 assert abs(result[col].mean()) < 0.1
-
-        config.Config.MODEL_SAVE_DIR = original
 
 
 # ── build_feature_matrix integration ─────────────────────────────────────────
@@ -183,7 +181,7 @@ class TestScaling:
 class TestBuildFeatureMatrix:
 
     def test_returns_correct_shapes(self, tmp_path):
-        from features.engineering import build_feature_matrix
+        from features.feature_engineering import build_feature_matrix
         import config
         original = config.Config.MODEL_SAVE_DIR
         config.Config.MODEL_SAVE_DIR = str(tmp_path)
@@ -194,7 +192,7 @@ class TestBuildFeatureMatrix:
         prod = _make_products_df(30)
 
         X, y, raw = build_feature_matrix(
-            financial_df=fin, products_df=prod, n_scenarios=200
+            financial_df=fin, products_df=prod, reviews_df=_make_reviews_df(100), n_scenarios=200
         )
 
         assert len(X) == 200
@@ -207,7 +205,7 @@ class TestBuildFeatureMatrix:
         config.Config.SCENARIO_OUTPUT_PATH = original_scenario
 
     def test_label_column_not_in_X(self, tmp_path):
-        from features.engineering import build_feature_matrix
+        from features.feature_engineering import build_feature_matrix
         import config
         original = config.Config.MODEL_SAVE_DIR
         config.Config.MODEL_SAVE_DIR = str(tmp_path)
@@ -218,7 +216,7 @@ class TestBuildFeatureMatrix:
         prod = _make_products_df(30)
 
         X, y, _ = build_feature_matrix(
-            financial_df=fin, products_df=prod, n_scenarios=100
+            financial_df=fin, products_df=prod, reviews_df=_make_reviews_df(100), n_scenarios=100
         )
         assert "label" not in X.columns
 
@@ -226,7 +224,7 @@ class TestBuildFeatureMatrix:
         config.Config.SCENARIO_OUTPUT_PATH = original_scenario
 
     def test_no_id_columns_in_X(self, tmp_path):
-        from features.engineering import build_feature_matrix
+        from features.feature_engineering import build_feature_matrix
         import config
         original = config.Config.MODEL_SAVE_DIR
         config.Config.MODEL_SAVE_DIR = str(tmp_path)
@@ -237,7 +235,7 @@ class TestBuildFeatureMatrix:
         prod = _make_products_df(30)
 
         X, _, _ = build_feature_matrix(
-            financial_df=fin, products_df=prod, n_scenarios=100
+            financial_df=fin, products_df=prod, reviews_df=_make_reviews_df(100), n_scenarios=100
         )
         assert "user_id" not in X.columns
         assert "product_id" not in X.columns
@@ -247,7 +245,7 @@ class TestBuildFeatureMatrix:
 
     def test_computed_features_present_in_X(self, tmp_path):
         """Verify all 6 computed financial features survive the pipeline into X."""
-        from features.engineering import build_feature_matrix
+        from features.feature_engineering import build_feature_matrix
         import config
         original = config.Config.MODEL_SAVE_DIR
         config.Config.MODEL_SAVE_DIR = str(tmp_path)
@@ -258,7 +256,7 @@ class TestBuildFeatureMatrix:
         prod = _make_products_df(30)
 
         X, _, _ = build_feature_matrix(
-            financial_df=fin, products_df=prod, n_scenarios=100
+            financial_df=fin, products_df=prod, reviews_df=_make_reviews_df(100), n_scenarios=100
         )
 
         feature_cols = [
