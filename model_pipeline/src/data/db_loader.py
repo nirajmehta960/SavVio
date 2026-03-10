@@ -65,7 +65,10 @@ def load_financial_profiles(engine=None) -> pd.DataFrame:
                emergency_fund_months
         FROM financial_profiles
     """
-    df = pd.read_sql(text(query), con=engine)
+    from sqlalchemy import text
+    with engine.connect() as conn:
+        result = conn.execute(text(query))
+        df = pd.DataFrame(result.fetchall(), columns=result.keys())
     logger.info("Loaded financial_profiles: %d rows, %d cols", *df.shape)
     print(f"[DB] financial_profiles loaded — {df.shape[0]} rows, {df.shape[1]} columns")
     return df
@@ -87,7 +90,10 @@ def load_products(engine=None) -> pd.DataFrame:
                features, details, category
         FROM products
     """
-    df = pd.read_sql(text(query), con=engine)
+    from sqlalchemy import text
+    with engine.connect() as conn:
+        result = conn.execute(text(query))
+        df = pd.DataFrame(result.fetchall(), columns=result.keys())
     logger.info("Loaded products: %d rows, %d cols", *df.shape)
     print(f"[DB] products loaded — {df.shape[0]} rows, {df.shape[1]} columns")
     return df
@@ -108,7 +114,10 @@ def load_reviews(engine=None) -> pd.DataFrame:
                review_text, verified_purchase, helpful_vote
         FROM reviews
     """
-    df = pd.read_sql(text(query), con=engine)
+    from sqlalchemy import text
+    with engine.connect() as conn:
+        result = conn.execute(text(query))
+        df = pd.DataFrame(result.fetchall(), columns=result.keys())
     logger.info("Loaded reviews: %d rows, %d cols", *df.shape)
     print(f"[DB] reviews loaded — {df.shape[0]} rows, {df.shape[1]} columns")
     return df
