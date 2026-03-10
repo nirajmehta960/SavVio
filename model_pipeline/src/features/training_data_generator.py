@@ -20,12 +20,15 @@ Usage:
 """
 
 import logging
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 
 import numpy as np
 import pandas as pd
 
-from deterministic_engine.decision_logic import DecisionEngine
+from deterministic_engine.financial_engine import DecisionEngine
+from deterministic_engine.downgrade_engine import DowngradeEngine
+from features.product_features import compute_product_features_batch
+from features.review_features import compute_review_features_batch
 
 logger = logging.getLogger(__name__)
 
@@ -171,20 +174,16 @@ def _sample_stratified(
 def _compute_features_and_label(
     users: pd.DataFrame,
     prods: pd.DataFrame,
+    reviews: Optional[pd.DataFrame] = None,
 ) -> pd.DataFrame:
     """
     Given paired user and product DataFrames of equal length, compute the
-    6 financial features and label each row with the DecisionEngine.
-    
-    Args:
-        users: DataFrame containing sampled user financial profiles.
-        prods: DataFrame containing sampled products, matched row-by-row with users.
-        
-    Returns:
-        A single DataFrame combining user and product data, along with 
-        6 newly computed financial features and a final decision 'label'.
+    6 financial features, apply the Layer 1 financial engine, and
+    optionally apply Layer 2 downgrade logic using product/review
+    features when reviews are provided.
     """
     engine = DecisionEngine()
+    downgrade_engine = DowngradeEngine()
 
     scenarios = users.copy()
     scenarios["product_id"] = prods["product_id"].values
@@ -225,11 +224,95 @@ def _compute_features_and_label(
     scenarios["net_worth_indicator"] = (savings - loan_amount) / income
 
     # Credit score projected onto 0–1 range.
-    scenarios["credit_risk_indicator"] = (credit_score - 300) / 550.0
+    scenarios["credit_risk_indicator"] = (credit_score - 299) / 550.0
 
-    # Label each scenario using the multi-condition deterministic engine.
-    logger.info("Labeling %d scenarios with DecisionEngine...", len(scenarios))
-    scenarios["label"] = scenarios.apply(engine.decide_row, axis=1)
+    # Label each scenario using the multi-condition deterministic engine (Layer 1).
+    logger.info("Labeling %d scenarios with DecisionEngine (Layer 1)...", len(scenarios))
+    scenarios["financial_label"] = scenarios.apply(engine.decide_row, axis=1)
+
+    # ── Layer 2: Product & Review Features + Downgrade ──────────────────────
+    if reviews is not None:
+        logger.info("Computing Layer 2 product and review features for %d scenarios...", len(scenarios))
+
+        # Product features — one row per product.
+        unique_prods = prods.drop_duplicates(subset=["product_id"]).copy()
+        product_feats_df = compute_product_features_batch(unique_prods)
+        product_feats_df = product_feats_df.set_index("product_id")
+
+        # Review features — aggregated one row per product.
+        review_feats_df = compute_review_features_batch(reviews)
+
+        # Merge Layer 2 features onto scenarios via product_id.
+        scenarios = scenarios.merge(
+            product_feats_df[
+                [
+                    "value_density",
+                    "review_confidence",
+                    "rating_polarization",
+                    "quality_risk_score",
+                    "cold_start_flag",
+                    "price_category_rank",
+                    "category_rating_deviation",
+                ]
+            ],
+            left_on="product_id",
+            right_index=True,
+            how="left",
+        )
+
+        scenarios = scenarios.merge(
+            review_feats_df[
+                [
+                    "verified_purchase_ratio",
+                    "helpful_concentration",
+                    "sentiment_spread",
+                    "review_depth_score",
+                    "reviewer_diversity",
+                    "extreme_rating_ratio",
+                ]
+            ],
+            left_on="product_id",
+            right_index=True,
+            how="left",
+        )
+
+        logger.info("Applying DowngradeEngine (Layer 2)...")
+
+        def _apply_downgrade(row: pd.Series) -> str:
+            class PF:
+                pass
+
+            class RF:
+                pass
+
+            pf = PF()
+            pf.value_density = row["value_density"]
+            pf.review_confidence = row["review_confidence"]
+            pf.rating_polarization = row["rating_polarization"]
+            pf.quality_risk_score = row["quality_risk_score"]
+            pf.cold_start_flag = int(row["cold_start_flag"])
+            pf.price_category_rank = row["price_category_rank"]
+            pf.category_rating_deviation = row["category_rating_deviation"]
+
+            rf = RF()
+            rf.verified_purchase_ratio = row["verified_purchase_ratio"]
+            rf.helpful_concentration = row["helpful_concentration"]
+            rf.sentiment_spread = row["sentiment_spread"]
+            rf.review_depth_score = row["review_depth_score"]
+            rf.reviewer_diversity = row["reviewer_diversity"]
+            rf.extreme_rating_ratio = row["extreme_rating_ratio"]
+
+            result = downgrade_engine.evaluate(
+                financial_label=row["financial_label"],
+                product_features=pf,
+                review_features=rf,
+            )
+            return result.final_label
+
+        scenarios["label"] = scenarios.apply(_apply_downgrade, axis=1)
+    else:
+        # Legacy behaviour: no Layer 2, label equals financial label.
+        scenarios["label"] = scenarios["financial_label"]
 
     return scenarios
 
@@ -241,6 +324,7 @@ def _compute_features_and_label(
 def generate_scenarios(
     financial_profiles: pd.DataFrame,
     products: pd.DataFrame,
+    reviews_df: Optional[pd.DataFrame] = None,
     n_scenarios: int = 10_000,
     random_state: int = 42,
     stratified: bool = True,
@@ -276,7 +360,7 @@ def generate_scenarios(
             financial_profiles, products, n_scenarios, rng,
         )
 
-    scenarios = _compute_features_and_label(users, prods)
+    scenarios = _compute_features_and_label(users, prods, reviews=reviews_df)
 
     logger.info(
         "Generated %d scenarios (stratified=%s) — label distribution:\n%s",

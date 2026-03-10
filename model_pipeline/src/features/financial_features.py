@@ -15,20 +15,15 @@ data pipeline (financial_features.py).
 This module combines them ON DEMAND for a specific user-product pair.
 
 For batch scenario generation (ML training label generation), see:
-    features/scenario_generator.py
+    features/training_data_generator.py
 
 Usage (single pair — Decision API / Deterministic Engine):
-    from features.affordability_features import compute_affordability
+    from features.financial_features import compute_affordability
 
     result = compute_affordability(
         user_financial_profile={...},
         product_price=799.99,
     )
-
-Usage (batch — ML training label generation):
-    from features.affordability_features import generate_scenarios
-
-    scenarios_df = generate_scenarios(financial_profiles_df, products_df, n_scenarios=50000)
 """
 
 import logging
@@ -116,8 +111,8 @@ def compute_affordability(
     # Negative means the user is underwater on their loan.
     net_worth = round((savings - loan_amount) / income, 4) if income > 0 else None
 
-    # Credit score normalized to the 0–1 range: (score − 300) / 550.
-    credit_risk = round((credit_score - 300) / 550, 4) if credit_score else None
+    # Credit score normalized to the 0–1 range: (score − 299) / 550.
+    credit_risk = round((credit_score - 299) / 550, 4) if credit_score else None
 
     result = AffordabilityResult(
         affordability_score=affordability_score,
