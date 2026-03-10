@@ -20,8 +20,10 @@ import sys
 # Ensure the src directory is in the python path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
+
+
 from config import Config
-from model_pipeline.src.features.feature_engineering import build_feature_matrix
+from features.feature_engineering import build_feature_matrix
 from core_models.train import train_model, log_model_to_mlflow
 from core_models.evaluate import evaluate_model
 from guards.bias_detection import evaluate_bias
@@ -42,8 +44,9 @@ def main():
     mlflow.set_experiment(Config.EXPERIMENT_NAME)
 
     # 2. Feature engineering + deterministic labeling (GREEN/YELLOW/RED).
-    # build_feature_matrix loads from DB, generates scenarios, labels them,
-    # handles missing values, encodes categoricals, and scales numerics.
+    # build_feature_matrix loads from DB, generates 50,000 scenarios by default,
+    # labels them, handles missing values, encodes categoricals, and scales numerics.
+    print("Using POSTGRESQL logic for pipeline run")
     X, y_raw, scenarios_raw = build_feature_matrix(is_training=True)
 
     # 3. Encode string labels (GREEN/YELLOW/RED) into integers for model training.
