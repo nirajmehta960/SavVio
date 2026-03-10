@@ -21,7 +21,7 @@ class Config:
     # ---------------------------------------------------------------------------
     # MLflow Configuration
     # ---------------------------------------------------------------------------
-    MLFLOW_TRACKING_URI = os.getenv("MLFLOW_TRACKING_URI", "http://mlflow-server:5000")
+    MLFLOW_TRACKING_URI = os.getenv("MLFLOW_TRACKING_URI", "./mlruns")
     EXPERIMENT_NAME = "Financial_Wellbeing_Prediction"
 
     # ---------------------------------------------------------------------------
@@ -47,6 +47,27 @@ class Config:
         "rating_variance",
     ]
 
+    # Computed product features (Layer 2).
+    PRODUCT_COMPUTED_FEATURES = [
+        "value_density",
+        "review_confidence",
+        "rating_polarization",
+        "quality_risk_score",
+        "cold_start_flag",
+        "price_category_rank",
+        "category_rating_deviation",
+    ]
+
+    # Computed review features (Layer 2).
+    REVIEW_COMPUTED_FEATURES = [
+        "verified_purchase_ratio",
+        "helpful_concentration",
+        "sentiment_spread",
+        "review_depth_score",
+        "reviewer_diversity",
+        "extreme_rating_ratio",
+    ]
+
     # Categorical columns for OrdinalEncoding.
     CATEGORICAL_FEATURES = ["employment_status", "has_loan", "region"]
 
@@ -56,8 +77,8 @@ class Config:
 
     # All numeric columns passed to StandardScaler.
     # Combines raw DB columns with the 6 computed financial features
-    # from affordability_features.py.
-    NUMERIC_FEATURES = FINANCIAL_FEATURES + PRODUCT_FEATURES + [
+    # from financial_features.py and the 13 Layer 2 product/review features.
+    NUMERIC_FEATURES = FINANCIAL_FEATURES + PRODUCT_FEATURES + PRODUCT_COMPUTED_FEATURES + REVIEW_COMPUTED_FEATURES + [
         "monthly_income", "monthly_expenses", "savings_balance", "monthly_emi",
         # Computed financial features (6).
         "affordability_score", "price_to_income_ratio", "residual_utility_score",
