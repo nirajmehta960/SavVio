@@ -190,13 +190,9 @@ def validate_target_distribution(
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    import os
     import sys
 
     logging.basicConfig(level=logging.INFO)
-
-    # Add src/ to path so we can import config and data_loader
-    sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 
     from config import Config
     from data_loader import load_data, define_target

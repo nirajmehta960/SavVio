@@ -66,6 +66,8 @@ x-airflow-common:
     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
     AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
     AIRFLOW__CORE__EXECUTION_API_SERVER_URL: 'http://airflow-apiserver:8080/execution/'
+    # Package root for the data pipeline so "from src.xxx import ..." works
+    PYTHONPATH: /opt/airflow/dags
 
     # SMTP connection for EmailOperator - uses variables from .env file
     AIRFLOW_CONN_SMTP_DEFAULT: '{"conn_type": "smtp", "host": "smtp.gmail.com", "port": 587, "login": "${SMTP_USER}", "password": "${SMTP_PASSWORD}", "extra": {"from_email": "${SMTP_USER}", "disable_ssl": true, "disable_tls": false}}'

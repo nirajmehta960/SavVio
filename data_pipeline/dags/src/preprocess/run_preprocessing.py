@@ -9,36 +9,16 @@ import os
 import logging
 from pathlib import Path
 
-# Fix path to ensure we can import 'preprocess' package
-# This script is located at data_pipeline/dags/src/preprocess/run_preprocessing.py
-current_script_path = Path(__file__).resolve()
-src_dir = current_script_path.parent.parent          # .../dags/src/
-dags_root = src_dir.parent                           # .../dags/
+from src.preprocess import financial, product, review
+from src.utils import setup_logging
 
 # Ensure running from dags root so relative data paths (data/raw, data/processed) work correctly
+current_script_path = Path(__file__).resolve()
+dags_root = current_script_path.parent.parent.parent  # .../dags/
 if os.getcwd() != str(dags_root):
     print(f"Changing working directory to: {dags_root}")
     os.chdir(dags_root)
 
-# Add 'src' to python path to allow imports
-if str(src_dir) not in sys.path:
-    sys.path.insert(0, str(src_dir))
-
-# Import preprocessing modules
-# Note: These imports work because we added 'src' to sys.path
-try:
-    from preprocess import financial, product, review
-except ImportError as e:
-    print(f"Error importing modules: {e}")
-    # Try importing as if we are running as a module from dags root
-    try:
-        from src.preprocess import financial, product, review
-    except ImportError:
-        print("Critical: Could not import preprocessing modules. Check your python path.")
-        sys.exit(1)
-
-# Configure centralized logging
-from src.utils import setup_logging
 setup_logging()
 logger = logging.getLogger("run_preprocessing")
 

@@ -8,16 +8,13 @@ Input: data/processed/financial_preprocessed.csv
 Output: data/features/financial_featured.csv
 """
 
-import sys
 import os
 import logging
 import pandas as pd
 import numpy as np
 
-# Add current script directory to import path.
-sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
-
-from utils import setup_logging, ensure_output_dir
+from src.features.utils import setup_logging, ensure_output_dir
+from src.incremental import merge_csv
 
 # Configure module logging.
 setup_logging()
@@ -102,7 +99,6 @@ def run_financial_features(input_path: str, output_path: str) -> None:
         df.to_csv(temp_output, index=False)
 
         if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
-            from src.incremental import merge_csv
             merge_stats = merge_csv(temp_output, output_path, key_cols=["user_id"])
             os.remove(temp_output)
             logger.info("Incremental merge stats: %s", merge_stats)

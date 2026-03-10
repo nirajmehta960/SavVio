@@ -11,6 +11,12 @@ import pandas as pd
 import great_expectations as gx
 from pathlib import Path
 
+from src.utils import setup_logging
+from typing import Optional, List
+from savviocore.validation.validation_config import (
+    CheckResult, Severity, ValidationReport, load_thresholds,
+)
+
 try:
     from great_expectations.dataset import PandasDataset
 except ImportError:
@@ -19,8 +25,6 @@ except ImportError:
 # Resolve local imports from the validation package.
 current_file_path = Path(__file__).resolve()
 validation_dir = current_file_path.parent.parent
-if str(validation_dir) not in sys.path:
-    sys.path.insert(0, str(validation_dir))
 
 def _find_pipeline_root(start: Path) -> Path:
     for candidate in [start, *start.parents]:
@@ -34,10 +38,7 @@ pipeline_root = _find_pipeline_root(current_file_path.parent)
 if os.getcwd() != str(pipeline_root):
     os.chdir(pipeline_root)
 
-from typing import Optional, List
-from savviocore.validation.validation_config import (
-    CheckResult, Severity, ValidationReport, load_thresholds,
-)
+
 
 logger = logging.getLogger(__name__)
 
@@ -460,7 +461,6 @@ def run_processed_validation(
 if __name__ == "__main__":
     import argparse
 
-    from src.utils import setup_logging
     setup_logging()
 
     parser = argparse.ArgumentParser(description="Validate processed SavVio data")

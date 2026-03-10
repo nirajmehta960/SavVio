@@ -5,15 +5,12 @@ This is the main entry point for the data ingestion step in the Airflow DAG.
 """
 
 import logging
-import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Tuple
 import pandas as pd
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-
-from ingestion.config import (
+from src.ingestion.config import (
     ENVIRONMENT,
     DATA_SOURCE,
     GCS_BUCKET_NAME,
@@ -51,7 +48,7 @@ def load_from_gcs() -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     logger.info("DATA SOURCE: Google Cloud Storage (GCS)")
     logger.info("=" * 80)
     
-    from ingestion.gcs_loader import load_financial_data, load_product_data, load_review_data
+    from src.ingestion.gcs_loader import load_financial_data, load_product_data, load_review_data
     
     def _load_financial():
         return load_financial_data(
@@ -115,7 +112,7 @@ def load_from_api() -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     logger.info("=" * 80)
     
     # Import API loader
-    from ingestion.api_loader import load_financial_data, load_product_data, load_review_data
+    from src.ingestion.api_loader import load_financial_data, load_product_data, load_review_data
     
     try:
         # Load financial data
@@ -226,14 +223,14 @@ def ingest_financial_task(**context):
     """Airflow task: ingest financial data only."""
     logger.info("Ingesting financial data...")
     if DATA_SOURCE.lower() == 'gcs':
-        from ingestion.gcs_loader import load_financial_data
+        from src.ingestion.gcs_loader import load_financial_data
         df = load_financial_data(
             bucket_name=GCS_BUCKET_NAME, blob_name=FINANCIAL_BLOB,
             destination_path=FINANCIAL_RAW_PATH,
             credentials_path=GCP_CREDENTIALS_PATH, project_id=GCP_PROJECT_ID,
         )
     else:
-        from ingestion.api_loader import load_financial_data
+        from src.ingestion.api_loader import load_financial_data
         df = load_financial_data(
             api_base_url=API_BASE_URL,
             endpoint=FINANCIAL_API_ENDPOINT.replace(API_BASE_URL, ''),
@@ -249,14 +246,14 @@ def ingest_product_task(**context):
     """Airflow task: ingest product data only."""
     logger.info("Ingesting product data...")
     if DATA_SOURCE.lower() == 'gcs':
-        from ingestion.gcs_loader import load_product_data
+        from src.ingestion.gcs_loader import load_product_data
         df = load_product_data(
             bucket_name=GCS_BUCKET_NAME, blob_name=PRODUCT_BLOB,
             destination_path=PRODUCT_RAW_PATH,
             credentials_path=GCP_CREDENTIALS_PATH, project_id=GCP_PROJECT_ID,
         )
     else:
-        from ingestion.api_loader import load_product_data
+        from src.ingestion.api_loader import load_product_data
         df = load_product_data(
             api_base_url=API_BASE_URL,
             endpoint=PRODUCT_API_ENDPOINT.replace(API_BASE_URL, ''),
@@ -272,14 +269,14 @@ def ingest_review_task(**context):
     """Airflow task: ingest review data only."""
     logger.info("Ingesting review data...")
     if DATA_SOURCE.lower() == 'gcs':
-        from ingestion.gcs_loader import load_review_data
+        from src.ingestion.gcs_loader import load_review_data
         df = load_review_data(
             bucket_name=GCS_BUCKET_NAME, blob_name=REVIEW_BLOB,
             destination_path=REVIEW_RAW_PATH,
             credentials_path=GCP_CREDENTIALS_PATH, project_id=GCP_PROJECT_ID,
         )
     else:
-        from ingestion.api_loader import load_review_data
+        from src.ingestion.api_loader import load_review_data
         df = load_review_data(
             api_base_url=API_BASE_URL,
             endpoint=REVIEW_API_ENDPOINT.replace(API_BASE_URL, ''),

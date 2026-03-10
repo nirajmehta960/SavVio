@@ -20,8 +20,6 @@ except ImportError:
 # Resolve local imports from the validation package.
 current_file_path = Path(__file__).resolve()
 validation_dir = current_file_path.parent.parent  # .../dags/src/validation/
-if str(validation_dir) not in sys.path:
-    sys.path.insert(0, str(validation_dir))
 
 def _find_pipeline_root(start: Path) -> Path:
     for candidate in [start, *start.parents]:

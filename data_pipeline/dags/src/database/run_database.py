@@ -7,10 +7,7 @@ PythonOperator can call them with a consistent *_task(**context) interface.
 
 import os
 import logging
-import sys
 
-# Add current script directory to import path (mirrors run_features.py pattern).
-sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 
 from src.database.upload_to_db import load_financial, load_products, load_reviews, load_all
 from savviocore.database.db_connection import get_engine, ensure_pgvector

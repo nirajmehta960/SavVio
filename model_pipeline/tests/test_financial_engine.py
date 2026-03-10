@@ -7,8 +7,9 @@ Tests the cross-group compound AND labeling rules:
   GREEN  — default when no RED triggers and < 2 YELLOW rules fire
 """
 
-import sys
 import os
+import sys
+
 import pytest
 import pandas as pd
 

@@ -5,8 +5,9 @@ Tests compute_affordability() (inference-time, 6 financial features) and
 generate_scenarios() (batch label generation with DecisionEngine).
 """
 
-import sys
 import os
+import sys
+
 import pytest
 import math
 import numpy as np

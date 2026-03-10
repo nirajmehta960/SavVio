@@ -14,10 +14,12 @@ import os
 import pandas as pd
 from pathlib import Path
 
+from src.validation.anomaly.detectors import AnomalyDetector
+from savviocore.validation.validation_config import CheckResult, Severity, ValidationReport
+from src.utils import setup_logging
+
 current_file_path = Path(__file__).resolve()
 validation_dir = current_file_path.parent.parent
-if str(validation_dir) not in sys.path:
-    sys.path.insert(0, str(validation_dir))
 
 
 def _find_pipeline_root(start: Path) -> Path:
@@ -31,8 +33,6 @@ pipeline_root = _find_pipeline_root(current_file_path.parent)
 if os.getcwd() != str(pipeline_root):
     os.chdir(pipeline_root)
 
-from anomaly.detectors import AnomalyDetector
-from savviocore.validation.validation_config import CheckResult, Severity, ValidationReport
 
 logger = logging.getLogger(__name__)
 
@@ -200,7 +200,6 @@ def run_anomaly_validation(
 
 if __name__ == "__main__":
     import argparse
-    from src.utils import setup_logging
     setup_logging()
 
     parser = argparse.ArgumentParser(description="Run Anomaly Detection (Financial Only)")
