@@ -65,6 +65,7 @@ def compute_affordability(
     user_financial_profile: dict,
     product_price: float,
     product_info: Optional[dict] = None,
+    cumulative_spend: float = 0.0,
 ) -> AffordabilityResult:
     """
     Computes 6 financial features for a single user-product pair.
@@ -72,21 +73,34 @@ def compute_affordability(
     Called at inference time by the Deterministic Financial Logic Engine
     when a user queries a specific product.
 
+    When a user evaluates multiple products in a session, pass the total
+    price of all previously approved purchases as ``cumulative_spend``
+    so that savings and discretionary income reflect what the user
+    actually has left.
+
     Args:
         user_financial_profile: Dict with pre-computed financial fields from DB.
         product_price: Price of the product being evaluated.
         product_info:  (Unused — kept for API compatibility.)
+        cumulative_spend: Sum of prices for prior purchases in this
+            session. Defaults to 0 (first / standalone purchase).
 
     Returns:
         AffordabilityResult with 6 financial features.
     """
     income = user_financial_profile.get("monthly_income", 0.0)
     discretionary = user_financial_profile.get("discretionary_income", 0.0)
-    savings = user_financial_profile.get("savings_balance", 0.0)
+    savings = user_financial_profile.get("liquid_savings", 0.0)
     expenses = user_financial_profile.get("monthly_expenses", 0.0)
     emi = user_financial_profile.get("monthly_emi", 0.0)
     loan_amount = user_financial_profile.get("loan_amount", 0.0)
     credit_score = user_financial_profile.get("credit_score", 0)
+
+    # DI absorbs prior purchases first; savings cover any shortfall.
+    di_used = min(max(discretionary, 0.0), cumulative_spend)
+    savings_used = cumulative_spend - di_used
+    discretionary = discretionary - di_used
+    savings = max(savings - savings_used, 0.0)
 
     total_obligations = expenses + emi
 
@@ -111,7 +125,9 @@ def compute_affordability(
     # Negative means the user is underwater on their loan.
     net_worth = round((savings - loan_amount) / income, 4) if income > 0 else None
 
-    # Credit score normalized to the 0–1 range: (score − 299) / 550.
+    # Credit score normalized to the 0–1 range: (score − 300 + 1) / 550.
+    # The +1 ensures a brand-new credit holder (score=300) gets a small
+    # positive CRI (~0.002) rather than exactly 0.
     credit_risk = round((credit_score - 299) / 550, 4) if credit_score else None
 
     result = AffordabilityResult(

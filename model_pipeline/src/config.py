@@ -15,13 +15,16 @@ class Config:
     # Paths
     # ---------------------------------------------------------------------------
     BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    MODEL_SAVE_DIR = os.path.join(BASE_DIR, "models")
-    SCENARIO_OUTPUT_PATH = os.path.join(BASE_DIR, "models", "training_scenarios.csv")
+    MODEL_SAVE_DIR = os.path.join(BASE_DIR, "artifacts")
+    SCENARIO_OUTPUT_PATH = os.path.join(BASE_DIR, "artifacts", "training_scenarios.csv")
 
     # ---------------------------------------------------------------------------
     # MLflow Configuration
     # ---------------------------------------------------------------------------
-    MLFLOW_TRACKING_URI = os.getenv("MLFLOW_TRACKING_URI", "http://mlflow-server:5000")
+    MLFLOW_TRACKING_URI = os.getenv(
+        "MLFLOW_TRACKING_URI",
+        os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "mlruns"),
+    )
     EXPERIMENT_NAME = "SavVio_Prediction"
 
     # GCP (Production)
@@ -97,7 +100,7 @@ class Config:
     # ---------------------------------------------------------------------------
     # Label Configuration
     # ---------------------------------------------------------------------------
-    LABEL_COL = "label"
+    LABEL_COL = "financial_label"
     LABELS = ["GREEN", "YELLOW", "RED"]
 
     # ---------------------------------------------------------------------------

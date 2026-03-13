@@ -188,11 +188,11 @@ class TestYellowRules:
     def test_rules_3_and_4_trigger_yellow(self, engine):
         """debt_stress + low_resilience → 2 rules → YELLOW."""
         fin = _healthy_financial()
-        fin["debt_to_income_ratio"] = 0.35
-        fin["emergency_fund_months"] = 2.0   # < 4 for Rule 3, < 3 for Rule 4
-        fin["price_to_income_ratio"] = 0.15  # > 0.10 for both
-        fin["saving_to_income_ratio"] = 0.20  # < 0.25 for Rule 4
-        fin["affordability_score"] = -50  # < 0 for Rule 4
+        fin["monthly_expense_burden_ratio"] = 0.75
+        fin["savings_to_price_ratio"] = 4.0
+        fin["price_to_income_ratio"] = 0.15
+        fin["emergency_fund_months"] = 2.0
+        fin["affordability_score"] = -50
         result = engine.decide(fin, _healthy_product())
         assert result.decision_category == "YELLOW"
         assert any("debt_stress" in r for r in result.triggered_rules)
@@ -203,9 +203,9 @@ class TestYellowRules:
         fin = _healthy_financial()
         fin["affordability_score"] = -100
         fin["price_to_income_ratio"] = 0.30
-        fin["savings_to_price_ratio"] = 8.0   # < 10 for both Rule 1 and 5
-        fin["credit_risk_indicator"] = 0.30   # < 0.35 for Rule 5
-        fin["net_worth_indicator"] = 0.5      # < 1.0 for Rule 5
+        fin["savings_to_price_ratio"] = 4.0
+        fin["credit_risk_indicator"] = 0.30
+        fin["net_worth_indicator"] = 0.5
         result = engine.decide(fin, _healthy_product())
         assert result.decision_category == "YELLOW"
 

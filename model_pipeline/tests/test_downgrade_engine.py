@@ -37,7 +37,7 @@ class TestDowngradeRules:
     def test_product_rule1_triggers(self):
         engine = DowngradeEngine()
         pf = _base_product_features()
-        pf.quality_risk_score = 3.0
+        pf.category_rating_deviation = -0.8
         pf.review_confidence = 0.2
         triggers, _ = engine._evaluate_product_rules(pf)
         assert any("PR1" in t for t in triggers)
@@ -89,21 +89,21 @@ class TestDowngradeRules:
 
 class TestCombinedLogic:
     def test_product_only_does_not_downgrade(self):
+        """Product trigger alone is insufficient — need both sides."""
         engine = DowngradeEngine()
         pf = _base_product_features()
         rf = _base_review_features()
-        # Trigger PR1 only.
-        pf.quality_risk_score = 3.0
+        pf.category_rating_deviation = -0.8
         pf.review_confidence = 0.2
         result = engine.evaluate("GREEN", pf, rf)
         assert not result.was_downgraded
         assert result.final_label == "GREEN"
 
     def test_review_only_does_not_downgrade(self):
+        """Review trigger alone is insufficient — need both sides."""
         engine = DowngradeEngine()
         pf = _base_product_features()
         rf = _base_review_features()
-        # Trigger RR1 only.
         rf.verified_purchase_ratio = 0.1
         rf.extreme_rating_ratio = 0.9
         rf.review_depth_score = 0.1
@@ -112,11 +112,11 @@ class TestCombinedLogic:
         assert result.final_label == "GREEN"
 
     def test_both_sides_downgrade_one_step(self):
+        """Product AND review triggers together → one-step downgrade."""
         engine = DowngradeEngine()
         pf = _base_product_features()
         rf = _base_review_features()
-        # Trigger PR1 and RR1 simultaneously.
-        pf.quality_risk_score = 3.0
+        pf.category_rating_deviation = -0.8
         pf.review_confidence = 0.2
         rf.verified_purchase_ratio = 0.1
         rf.extreme_rating_ratio = 0.9
@@ -131,7 +131,7 @@ class TestCombinedLogic:
         engine = DowngradeEngine()
         pf = _base_product_features()
         rf = _base_review_features()
-        pf.quality_risk_score = 3.0
+        pf.category_rating_deviation = -0.8
         pf.review_confidence = 0.2
         rf.verified_purchase_ratio = 0.1
         rf.extreme_rating_ratio = 0.9
@@ -144,7 +144,7 @@ class TestCombinedLogic:
         engine = DowngradeEngine()
         pf = _base_product_features()
         rf = _base_review_features()
-        pf.quality_risk_score = 3.0
+        pf.category_rating_deviation = -0.8
         pf.review_confidence = 0.2
         rf.verified_purchase_ratio = 0.1
         rf.extreme_rating_ratio = 0.9
