@@ -10,8 +10,30 @@ by at most one step based on product and review risk patterns:
     RED    -> RED  (never upgraded)
 
 Downgrade requires BOTH:
-    - at least one product rule trigger, and
+    - at least one product rule trigger, AND
     - at least one review rule trigger.
+
+This follows the same cross-group design principle used in the
+financial engine: a downgrade requires corroboration from two
+independent signal categories (product metadata + review data)
+to avoid false triggers from a single source.
+
+Product feature groups (by underlying driver):
+    Group A — Rating quality (avg_rating):   value_density,
+                                              category_rating_deviation
+    Group B — Review volume (rating_number): review_confidence,
+                                              cold_start_flag
+    Group C — Review controversy (variance):  rating_polarization,
+                                              quality_risk_score
+    Group D — Price positioning (price/cat):  price_category_rank
+
+Review feature groups (by underlying driver):
+    Group E — Purchase verification:  verified_purchase_ratio
+    Group F — Helpfulness dist.:      helpful_concentration
+    Group G — Sentiment direction:    sentiment_spread
+    Group H — Content quality:        review_depth_score
+    Group I — Reviewer identity:      reviewer_diversity
+    Group J — Rating extremeness:     extreme_rating_ratio
 """
 
 from dataclasses import dataclass, field
@@ -52,8 +74,7 @@ class DowngradeEngine:
         product_triggers, product_expl = self._evaluate_product_rules(product_features)
         review_triggers, review_expl = self._evaluate_review_rules(review_features)
 
-        # Downgrade if EITHER product OR review engines raise concerns.
-        if product_triggers or review_triggers:
+        if product_triggers and review_triggers:
             final_label = self._apply_downgrade(financial_label)
             was_downgraded = final_label != financial_label
         else:
@@ -79,21 +100,21 @@ class DowngradeEngine:
         triggers: List[str] = []
         explanations: List[str] = []
 
-        # PR1: Risky AND unverified (C + B)
-        if pf.quality_risk_score > 2.5 and pf.review_confidence < 0.3:
-            triggers.append("PR1:risky_unverified")
+        # PR1: Below-category-average rating AND weak review evidence (A + B)
+        if pf.category_rating_deviation < -0.5 and pf.review_confidence < 0.3:
+            triggers.append("PR1:underrated_unverified")
             explanations.append(
-                "High quality risk with low review confidence (risky, weakly verified product)."
+                "Rates below category average with insufficient review evidence."
             )
 
-        # PR2: Worst in category AND premium (A + D)
+        # PR2: Well below category average AND premium priced (A + D)
         if pf.category_rating_deviation < -0.8 and pf.price_category_rank > 0.7:
             triggers.append("PR2:worst_premium_in_category")
             explanations.append(
                 "Among the worst-rated products in its category while priced as a premium option."
             )
 
-        # PR3: Polarized AND new AND expensive (C + B + D)
+        # PR3: Polarized AND cold-start AND expensive (C + B + D)
         if (
             pf.rating_polarization > 0.6
             and pf.cold_start_flag == 1
@@ -110,7 +131,7 @@ class DowngradeEngine:
         triggers: List[str] = []
         explanations: List[str] = []
 
-        # RR1: Fake review pattern (E + G + H)
+        # RR1: Fake review pattern (E + J + H)
         if (
             rf.verified_purchase_ratio < 0.3
             and rf.extreme_rating_ratio > 0.8
@@ -121,7 +142,7 @@ class DowngradeEngine:
                 "Many shallow, extreme reviews with very few verified purchases (possible astroturfing)."
             )
 
-        # RR2: Unverified opinion domination (E + F)
+        # RR2: Unverified opinion domination (E + F + I)
         if (
             rf.verified_purchase_ratio < 0.4
             and rf.helpful_concentration > 0.7
@@ -132,7 +153,7 @@ class DowngradeEngine:
                 "Helpfulness votes concentrated on a small, unverified reviewer set."
             )
 
-        # RR3: Negative AND shallow AND unverified (G + H + E)
+        # RR3: Negative, shallow, unverified (G + H + E)
         if (
             rf.sentiment_spread < -0.3
             and rf.review_depth_score < 0.3

@@ -113,7 +113,7 @@ class DecisionEngine:
             return red_result
 
         # Evaluate YELLOW Rules
-        yellow_result = self._evaluate_yellow_rules(affordability, pir, rus, spr, nwi, credit, dti, stir, efm)
+        yellow_result = self._evaluate_yellow_rules(affordability, pir, rus, spr, nwi, credit, dti, stir, efm, meb)
         if yellow_result:
             return yellow_result
 
@@ -130,33 +130,33 @@ class DecisionEngine:
         """
         triggered = []
 
-        # RED Rule 1 — Groups 1 + 2 + price awareness
-        if affordability < 0 and spr < 2.0 and pir > 0.05:
+        # RED Rule 1 — Groups 1 + 2 
+        if affordability < 0 and spr < 1.5 and pir > 0.10:
             triggered.append("red:cant_afford_from_any_angle")
             return DecisionResult("RED", triggered,
                 explanation="Income can't handle it, savings barely cover the price, and the purchase is non-trivial.")
 
         # RED Rule 2 — Groups 3 + 1 + 2
-        if meb > 0.60 and pir > 0.10 and efm < 4.0:
+        if meb > 0.80 and pir > 0.20 and efm < 3.0:
             triggered.append("red:maxed_budget_significant_purchase")
             return DecisionResult("RED", triggered,
-                explanation="Budget over 60% consumed, product is 10%+ of income, and thin emergency fund.")
+                explanation="Budget over 80% consumed, product is 20%+ of income, and thin emergency fund.")
 
         # RED Rule 3 — Groups 4 + 1 + 2
-        if nwi < 0.0 and affordability < 0 and pir > 0.05:
+        if nwi < -2.0 and affordability < 0 and pir > 0.15 and efm < 3.0:
             triggered.append("red:underwater_no_surplus_significant")
             return DecisionResult("RED", triggered,
                 explanation="Net worth negative, no surplus income, and a significant purchase.")
 
         # RED Rule 4 — Groups 2 + 3 + price awareness
-        if efm < 2.0 and dti > 0.40 and pir > 0.05:
+        if efm < 1.0 and dti > 0.30 and pir > 0.10:
             triggered.append("red:paycheck_to_paycheck_wipes_net")
             return DecisionResult("RED", triggered,
-                explanation="Less than 2 month emergency fund, DTI over 40%, and purchase is non-trivial.")
+                explanation="Less than 1 month emergency fund, DTI over 30%, and purchase is non-trivial.")
 
         return None
 
-    def _evaluate_yellow_rules(self, affordability, pir, rus, spr, nwi, credit, dti, stir, efm) -> Optional[DecisionResult]:
+    def _evaluate_yellow_rules(self, affordability, pir, rus, spr, nwi, credit, dti, stir, efm, meb) -> Optional[DecisionResult]:
         """
         Evaluate YELLOW rules: Genuine concern — user should pause and think.
         YELLOW triggers when >= 2 rules trigger.
@@ -165,32 +165,32 @@ class DecisionEngine:
         explanations = []
 
         # YELLOW Rule 1 — Groups 1 + 2
-        if affordability < 0 and pir > 0.25 and spr < 10.0:
+        if affordability < 0 and pir > 0.25 and spr < 5.0:
             yellow_triggers.append("yellow:income_pressure")
             explanations.append("Income doesn't cover purchase directly and savings cushion is moderate.")
 
         # YELLOW Rule 2 — Groups 2 + 1
-        if spr < 5.0 and rus < 3.0 and pir > 0.10:
+        if spr < 5.0 and pir > 0.10:
             yellow_triggers.append("yellow:savings_strain")
-            explanations.append("Savings are thin leaving uncomfortable post-purchase runway.")
+            explanations.append("Savings can't comfortably absorb the purchase.")
 
-        # YELLOW Rule 3 — Groups 3 + 2 + price awareness
-        if dti > 0.30 and efm < 4.0 and pir > 0.10:
+        # YELLOW Rule 3 — Groups 3 + 1 + 2 
+        if meb > 0.70 and pir > 0.10 and spr < 5.0:
             yellow_triggers.append("yellow:debt_stress")
-            explanations.append("High debt obligations coupled with a thin emergency cushion.")
+            explanations.append("High debt obligations coupled with significant purchase and thin savings.")
 
         # YELLOW Rule 4 — Groups 2 + 1
-        if efm < 3.0 and stir < 0.25 and affordability < 0:
+        if efm < 3.0 and affordability < 0:
             yellow_triggers.append("yellow:low_resilience")
-            explanations.append("Low emergency funds and low savings rate for an unaffordable immediate expense.")
+            explanations.append("Low emergency funds for an unaffordable immediate expense.")
 
         # YELLOW Rule 5 — Groups 4 + 1 + 2
-        if credit < 0.35 and nwi < 1.0 and pir > 0.15 and spr < 10.0:
+        if credit < 0.35 and nwi < 1.0 and pir > 0.15 and spr < 5.0:
             yellow_triggers.append("yellow:weak_profile")
             explanations.append("Weak overall financial profile for a significant purchase.")
 
-        # YELLOW triggers when 1+ rules trigger.
-        if len(yellow_triggers) >= 1:
+        # YELLOW triggers when 2+ rules trigger.
+        if len(yellow_triggers) >= 2:
             combined_explanation = " ".join(explanations)
             return DecisionResult("YELLOW", yellow_triggers, [],
                 explanation=combined_explanation)
