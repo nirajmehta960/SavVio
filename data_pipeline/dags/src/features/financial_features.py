@@ -121,11 +121,11 @@ def calculate_ratios(df: pd.DataFrame) -> pd.DataFrame:
     )
 
     # Metric 2: Savings-to-Income Ratio (STIR).
-    # Definition: Ratio of LIQUID savings to annual income.
+    # Definition: Ratio of LIQUID savings to monthly income.
     # Uses liquid_savings (SCF-adjusted) instead of raw savings_balance.
     df["saving_to_income_ratio"] = np.where(
         df["monthly_income"] > 0,
-        df["liquid_savings"] / (df["monthly_income"] * 12),
+        df["liquid_savings"] / df["monthly_income"],
         np.nan
     )
 

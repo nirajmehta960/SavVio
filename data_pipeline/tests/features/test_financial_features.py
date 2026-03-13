@@ -164,11 +164,11 @@ def test_debt_to_income_ratio_zero_income():
 
 
 def test_saving_to_income_ratio_basic():
-    """STIR = liquid_savings / (income * 12). Uses SCF-derived liquid_savings."""
+    """STIR = liquid_savings / income. Uses SCF-derived liquid_savings."""
     df = _base_df_with_liquid()
     out = M.calculate_ratios(df)
     liquid = out.loc[0, "liquid_savings"]
-    expected = liquid / (5000.0 * 12)
+    expected = liquid / 5000.0
     assert out.loc[0, "saving_to_income_ratio"] == pytest.approx(expected)
 
 
