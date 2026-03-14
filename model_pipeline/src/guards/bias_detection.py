@@ -17,10 +17,10 @@ def evaluate_bias(y_test, y_pred, sensitive_features: pd.DataFrame):
         sf_col = sensitive_features[feature_name]
         
         # Demographic Parity: Are predictions independent of the sensitive feature?
-        dpd = demographic_parity_difference(y_test, y_pred, sensitive_features=sf_col)
+        dpd = demographic_parity_difference((y_test==0).astype(int), (y_pred==0).astype(int), sensitive_features=sf_col)
         
         # Equalized Odds: Do different groups have the same True Positive / False Positive Rates?
-        eod = equalized_odds_difference(y_test, y_pred, sensitive_features=sf_col)
+        eod = equalized_odds_difference((y_test==0).astype(int), (y_pred==0).astype(int), sensitive_features=sf_col)
         
         print(f"  Feature: {feature_name}")
         print(f"    - Demographic Parity Diff: {dpd:.4f} (Ideal: 0)")
