@@ -16,7 +16,7 @@ class Config:
     # ---------------------------------------------------------------------------
     BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     MODEL_SAVE_DIR = os.path.join(BASE_DIR, "models")
-    SCENARIO_OUTPUT_PATH = os.path.join(BASE_DIR, "models", "training_scenarios.csv")
+    SCENARIO_OUTPUT_PATH = os.path.join(BASE_DIR, "data", "training_scenarios.csv")
 
     # ---------------------------------------------------------------------------
     # MLflow Configuration
@@ -89,7 +89,7 @@ class Config:
     # ---------------------------------------------------------------------------
     # Label Configuration
     # ---------------------------------------------------------------------------
-    LABEL_COL = "financial_label"
+    LABEL_COL = "final_recommendation"
     LABELS = ["GREEN", "YELLOW", "RED"]
 
     # ---------------------------------------------------------------------------
