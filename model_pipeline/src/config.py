@@ -51,6 +51,19 @@ class Config:
         "rating_variance",
     ]
 
+    # Computed product features (7) from product_features.py.
+    PRODUCT_COMPUTED_FEATURES = [
+        "value_density", "review_confidence", "rating_polarization",
+        "quality_risk_score", "cold_start_flag", "price_category_rank",
+        "category_rating_deviation",
+    ]
+
+    # Computed review features (6) from review_features.py.
+    REVIEW_COMPUTED_FEATURES = [
+        "verified_purchase_ratio", "helpful_concentration", "sentiment_spread",
+        "review_depth_score", "reviewer_diversity", "extreme_rating_ratio",
+    ]
+
     # Categorical columns for OrdinalEncoding.
     CATEGORICAL_FEATURES = ["employment_status", "has_loan", "region"]
 
