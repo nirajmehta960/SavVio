@@ -12,54 +12,32 @@ SavVio/
     ├── Dockerfile
     ├── docker-compose.yml
     ├── model-requirements.txt
-    ├── pyproject.toml
-    ├── implementation_plan.md
-    ├── SETUP_RUN.md
-    ├── .env.model.example
-    ├── docs/
-    │   └── pipeline_flow.md           # Pipeline flow and training data location
-    ├── models/                         # Training data and model artifacts (e.g. training_scenarios.csv)
-    │   └── .gitkeep
-    ├── experiments/                    # Experiment outputs (optional)
-    │   └── .gitkeep
+    ├── models/                         # Local dev model storage (gitignored)
+    │   ├── checkpoints/
+    │   ├── artifacts/
+    │   └── preprocessing/
     ├── src/
     │   ├── run_pipeline.py             # End-to-end ML pipeline entrypoint
     │   ├── config.py                   # Centralized configuration
-    │   ├── push-to-registry.py         # Model registry push script
     │   ├── data/
     │   │   ├── db_loader.py            # Reads from PostgreSQL
-    │   │   └── validate_data.py       # Schema validation
+    │   │   └── validate_data.py        # Schema validation
     │   ├── features/
     │   │   ├── feature_engineering.py  # Imputation, encoding, scaling, orchestration
-    │   │   ├── financial_features.py  # 6 computed financial features
-    │   │   ├── product_features.py    # Product-level features
-    │   │   ├── review_features.py     # Review-derived features
-    │   │   ├── training_data_generator.py  # Scenario generation + labeling (orchestrator)
-    │   │   └── README.md
+    │   │   ├── affordability_features.py   # 6 computed financial features
+    │   │   └── training_data_generator.py  # Scenario generation + labeling
     │   ├── deterministic_engine/
-    │   │   ├── financial_engine.py    # Layer 1: GREEN/YELLOW/RED rules
-    │   │   ├── downgrade_engine.py    # Layer 2: downgrade logic
-    │   │   ├── liquid_savings_calculation.md
-    │   │   └── README.md
+    │   │   └── decision_logic.py       # Authoritative GREEN/YELLOW/RED rules
     │   ├── core_models/
-    │   │   ├── train.py               # XGBoost, LightGBM, XGB-Linear, LogReg
-    │   │   ├── evaluate.py            # Metrics, visualizations, MLflow logging
-    │   │   └── optuna-tuner.py        # Bayesian hyperparameter optimization (Optuna)
+    │   │   ├── train.py                # XGBoost, LightGBM, XGB-Linear, LogReg
+    │   │   └── evaluate.py             # Metrics, visualizations, MLflow logging
+    │   ├── tuning/
+    │   │   └── optuna_tuner.py         # Bayesian hyperparameter optimization
     │   ├── guards/
-    │   │   └── bias_detection.py      # Fairlearn slice-based fairness analysis
+    │   │   └── bias_detection.py       # Fairlearn slice-based fairness analysis
     │   └── llm/
-    │       └── prompt_engin.py        # LLM wrapping + guardrails
+    │       └── prompt_engin.py         # LLM wrapping + guardrails
     └── tests/
-        ├── test_data_loader.py
-        ├── test_feature_engineering.py
-        ├── test_financial_engine.py
-        ├── test_downgrade_engine.py
-        ├── test_financial_features.py
-        ├── test_product_features.py
-        ├── test_review_features.py
-        ├── test_training.py
-        ├── test_bias_detection.py
-        └── test_validation.py
 ```
 
 ---
@@ -188,7 +166,7 @@ SavVio/
 |-------|----------|--------|
 | Financial (DB) | `discretionary_income`, `debt_to_income_ratio`, `saving_to_income_ratio`, `monthly_expense_burden_ratio`, `emergency_fund_months` | financial_profiles table |
 | Product (DB) | `price`, `average_rating`, `rating_number`, `rating_variance` | products table |
-| Computed (6) | `affordability_score`, `price_to_income_ratio`, `residual_utility_score`, `savings_to_price_ratio`, `net_worth_indicator`, `credit_risk_indicator` | financial_features.py |
+| Computed (6) | `affordability_score`, `price_to_income_ratio`, `residual_utility_score`, `savings_to_price_ratio`, `net_worth_indicator`, `credit_risk_indicator` | affordability_features.py |
 | Categorical | `employment_status`, `has_loan`, `region` | financial_profiles table |
 
 **Scenario Generation:**
@@ -213,7 +191,7 @@ SavVio/
 
 ### Phase 3 — Deterministic Decision Engine
 
-**Locations:** `deterministic_engine/financial_engine.py` (Layer 1 — GREEN/YELLOW/RED), `deterministic_engine/downgrade_engine.py` (Layer 2 — downgrade logic). The orchestrator that runs both and produces final labels lives in `features/training_data_generator.py`.
+**Location:** `deterministic_engine/decision_logic.py`
 
 The deterministic engine is a pure-financial multi-condition labeling system. It is built **before** model training because it generates the labels (GREEN/YELLOW/RED) that the ML model trains on. Its output is authoritative — neither the ML model nor the LLM layer can override it.
 
@@ -693,16 +671,16 @@ pytest model_pipeline/tests
 
 | Test File | What It Tests |
 |-----------|--------------|
-| `test_data_loader.py` | Data loading from DB, schema checks |
-| `test_feature_engineering.py` | Feature construction, encoding, scaling, scenario generation |
-| `test_financial_features.py` | Financial feature computation (6 features, graduated flow) |
-| `test_product_features.py` | Product-level feature computation |
-| `test_review_features.py` | Review-derived feature computation |
-| `test_financial_engine.py` | Layer 1: RED/YELLOW/GREEN rules, edge cases |
-| `test_downgrade_engine.py` | Layer 2: downgrade logic |
-| `test_training.py` | Model training, param filtering, seed reproducibility |
-| `test_bias_detection.py` | Slice metric computation, disparity detection |
-| `test_validation.py` | Validation and schema checks |
+| `test_load_data.py` | Schema checks, data loading, join logic |
+| `test_features.py` | Feature construction, encoding, scaling, scenario generation |
+| `test_train.py` | All 4 model types, param filtering, early stopping, seed reproducibility |
+| `test_evaluate.py` | Metric computation, multi-class AUC, visualization generation |
+| `test_bias_slicing.py` | Slice metric computation, disparity detection, pass/fail logic |
+| `test_optuna_tuner.py` | Study creation, objective functions, timeout, unsupported model error |
+| `test_sensitivity.py` | SHAP output shape, LIME stability |
+| `test_registry.py` | Registry push, rollback pointer |
+| `test_decision_logic.py` | All 4 RED rules, all 5 YELLOW rules, GREEN default, edge cases |
+| `test_llm_wrapper.py` | Guardrail enforcement, prompt output validation |
 
 ---
 
