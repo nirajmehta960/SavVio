@@ -15,16 +15,13 @@ class Config:
     # Paths
     # ---------------------------------------------------------------------------
     BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    MODEL_SAVE_DIR = os.path.join(BASE_DIR, "artifacts")
-    SCENARIO_OUTPUT_PATH = os.path.join(BASE_DIR, "artifacts", "training_scenarios.csv")
+    MODEL_SAVE_DIR = os.path.join(BASE_DIR, "models")
+    SCENARIO_OUTPUT_PATH = os.path.join(BASE_DIR, "models", "training_scenarios.csv")
 
     # ---------------------------------------------------------------------------
     # MLflow Configuration
     # ---------------------------------------------------------------------------
-    MLFLOW_TRACKING_URI = os.getenv(
-        "MLFLOW_TRACKING_URI",
-        os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "mlruns"),
-    )
+    MLFLOW_TRACKING_URI = os.getenv("MLFLOW_TRACKING_URI", "http://mlflow-server:5000")
     EXPERIMENT_NAME = "SavVio_Prediction"
 
     # GCP (Production)
@@ -54,27 +51,6 @@ class Config:
         "rating_variance",
     ]
 
-    # Computed product features (Layer 2).
-    PRODUCT_COMPUTED_FEATURES = [
-        "value_density",
-        "review_confidence",
-        "rating_polarization",
-        "quality_risk_score",
-        "cold_start_flag",
-        "price_category_rank",
-        "category_rating_deviation",
-    ]
-
-    # Computed review features (Layer 2).
-    REVIEW_COMPUTED_FEATURES = [
-        "verified_purchase_ratio",
-        "helpful_concentration",
-        "sentiment_spread",
-        "review_depth_score",
-        "reviewer_diversity",
-        "extreme_rating_ratio",
-    ]
-
     # Categorical columns for OrdinalEncoding.
     CATEGORICAL_FEATURES = ["employment_status", "has_loan", "region"]
 
@@ -84,8 +60,8 @@ class Config:
 
     # All numeric columns passed to StandardScaler.
     # Combines raw DB columns with the 6 computed financial features
-    # from financial_features.py and the 13 Layer 2 product/review features.
-    NUMERIC_FEATURES = FINANCIAL_FEATURES + PRODUCT_FEATURES + PRODUCT_COMPUTED_FEATURES + REVIEW_COMPUTED_FEATURES + [
+    # from affordability_features.py.
+    NUMERIC_FEATURES = FINANCIAL_FEATURES + PRODUCT_FEATURES + [
         "monthly_income", "monthly_expenses", "savings_balance", "monthly_emi",
         # Computed financial features (6).
         "affordability_score", "price_to_income_ratio", "residual_utility_score",
