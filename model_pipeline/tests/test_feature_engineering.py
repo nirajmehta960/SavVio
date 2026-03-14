@@ -227,7 +227,7 @@ class TestBuildFeatureMatrix:
         X, y, _ = build_feature_matrix(
             financial_df=fin, products_df=prod, reviews_df=_make_reviews_df(100), n_scenarios=100
         )
-        assert "financial_label" not in X.columns
+        assert "final_recommendation" not in X.columns
 
         config.Config.MODEL_SAVE_DIR = original
         config.Config.SCENARIO_OUTPUT_PATH = original_scenario
