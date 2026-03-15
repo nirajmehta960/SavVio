@@ -16,7 +16,7 @@ class Config:
     # ---------------------------------------------------------------------------
     BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     MODEL_SAVE_DIR = os.path.join(BASE_DIR, "models")
-    SCENARIO_OUTPUT_PATH = os.path.join(BASE_DIR, "models", "training_scenarios.csv")
+    SCENARIO_OUTPUT_PATH = os.path.join(BASE_DIR, "data", "training_scenarios.csv")
 
     # ---------------------------------------------------------------------------
     # MLflow Configuration
@@ -51,6 +51,19 @@ class Config:
         "rating_variance",
     ]
 
+    # Computed product features (7) from product_features.py.
+    PRODUCT_COMPUTED_FEATURES = [
+        "value_density", "review_confidence", "rating_polarization",
+        "quality_risk_score", "cold_start_flag", "price_category_rank",
+        "category_rating_deviation",
+    ]
+
+    # Computed review features (6) from review_features.py.
+    REVIEW_COMPUTED_FEATURES = [
+        "verified_purchase_ratio", "helpful_concentration", "sentiment_spread",
+        "review_depth_score", "reviewer_diversity", "extreme_rating_ratio",
+    ]
+
     # Categorical columns for OrdinalEncoding.
     CATEGORICAL_FEATURES = ["employment_status", "has_loan", "region"]
 
@@ -76,7 +89,7 @@ class Config:
     # ---------------------------------------------------------------------------
     # Label Configuration
     # ---------------------------------------------------------------------------
-    LABEL_COL = "label"
+    LABEL_COL = "final_recommendation"
     LABELS = ["GREEN", "YELLOW", "RED"]
 
     # ---------------------------------------------------------------------------
