@@ -17,7 +17,6 @@ Requires:
 """
 
 import os
-import sys
 import json
 import logging
 import subprocess
@@ -28,23 +27,9 @@ import joblib
 import mlflow
 from mlflow.tracking import MlflowClient
 
-# Add src/ to path so we can import Config.
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 from config import Config
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
-
-
-def get_latest_model_version(client, model_name):
-    """Fetch the latest version of the registered model from MLflow."""
-    versions = client.search_model_versions(f"name='{model_name}'")
-    if not versions:
-        raise RuntimeError(f"No versions found for model '{model_name}'")
-    latest = max(versions, key=lambda v: int(v.version))
-    logger.info("Latest MLflow model: %s v%s (run: %s)", model_name, latest.version, latest.run_id)
-    return latest
-
 
 def collect_metadata(client, model_version):
     """Collect lineage metadata from the MLflow run."""
@@ -78,15 +63,6 @@ def collect_metadata(client, model_version):
         "pushed_at": datetime.utcnow().isoformat(),
     }
     return metadata
-
-
-def download_model(client, model_version, dest_dir):
-    """Download the model artifact from MLflow to a local directory."""
-    model_uri = f"models:/{model_version.name}/{model_version.version}"
-    local_path = mlflow.artifacts.download_artifacts(artifact_uri=model_uri, dst_path=dest_dir)
-    logger.info("Model downloaded to: %s", local_path)
-    return local_path
-
 
 def push_to_gcp(model_path, metadata, metadata_path):
     """Upload model + metadata to GCP Artifact Registry."""

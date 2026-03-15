@@ -330,7 +330,7 @@ def final_evaluation(best, X_test, y_test, label_encoder):
 
         logger.info("Final test metrics: %s", metrics)
 
-        # ── Model registration placeholder ──
+        # ── Model registration ──
         model_uri = f"runs:/{best['run_id']}/model"
         mlflow.register_model(model_uri, Config.REGISTERED_MODEL_NAME)
 
