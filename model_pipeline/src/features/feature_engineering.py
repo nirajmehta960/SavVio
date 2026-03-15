@@ -137,8 +137,6 @@ class FeatureDropper(BaseEstimator, TransformerMixin):
                         if c in df.columns]
         if "product_price" in df.columns:
             cols_to_drop.append("product_price")
-        if "financial_label" in df.columns:
-            cols_to_drop.append("financial_label")
         return df.drop(columns=cols_to_drop, errors="ignore")
 
 

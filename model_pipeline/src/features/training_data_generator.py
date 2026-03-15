@@ -279,7 +279,7 @@ def _compute_round(
     scenarios["credit_risk_indicator"] = (credit_score - 299) / 550.0
 
     scenarios["_l1_label"] = scenarios.apply(engine.decide_row, axis=1)
-    scenarios["financial_label"] = scenarios["_l1_label"]
+    scenarios["final_recommendation"] = scenarios["_l1_label"]
 
     return scenarios
 
@@ -443,12 +443,12 @@ def _apply_layer2(
             review_features=rf,
         )
         return pd.Series({
-            "financial_label": result.final_label,
+            "final_recommendation": result.final_label,
             "downgraded": int(result.final_label != row["_l1_label"]),
         })
 
     applied = scenarios.apply(_apply_downgrade, axis=1)
-    scenarios["financial_label"] = applied["financial_label"]
+    scenarios["final_recommendation"] = applied["final_recommendation"]
     scenarios["downgraded"] = applied["downgraded"]
     return scenarios
 
@@ -543,7 +543,7 @@ def generate_scenarios(
         else:
             scenarios["downgraded"] = 0
 
-        # Drop the intermediate Layer 1 label; final decision is in `financial_label`.
+        # Drop the intermediate Layer 1 label; final decision is in `final_recommendation`.
         scenarios = scenarios.drop(columns=["_l1_label"], errors="ignore")
 
         if len(scenarios) > n_scenarios:
@@ -581,6 +581,6 @@ def generate_scenarios(
     logger.info(
         "Generated %d scenarios — label distribution:\n%s",
         len(scenarios),
-        scenarios["financial_label"].value_counts().to_string(),
+        scenarios["final_recommendation"].value_counts().to_string(),
     )
     return scenarios
